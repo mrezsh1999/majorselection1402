@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from rest_framework.authtoken.models import Token
 
-from users.models import Student, Advisor
+from users.models import Student, Advisor, ReportCard
 
 
 class StudentLoginSerializer(serializers.ModelSerializer):
@@ -55,6 +55,16 @@ class StudentListSerializer(serializers.ModelSerializer):
 
 
 class StudentRetrieveListSerializer(serializers.ModelSerializer):
+    gender = serializers.ChoiceField(choices=Student.GENDER)
+    field_of_study = serializers.ChoiceField(choices=Student.FIELD_OF_STUDY)
+    province = serializers.SlugRelatedField(slug_field='title', read_only=True)
+    report_card = serializers.SerializerMethodField('get_report_card')
+
+    def get_report_card(self, obj):
+        if ReportCard.objects.filter(student=obj):
+            request = self.context.get('request')
+            return request.build_absolute_uri(ReportCard.objects.get(student=obj).report_card_file.url)
+
     class Meta:
         model = Student
-        fields = '__all__'
+        fields = ['gender', 'national_code', 'field_of_study', 'volunteer_code', 'province', 'report_card']

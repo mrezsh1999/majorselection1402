@@ -34,6 +34,11 @@ class UserViewSet(mixins.ListModelMixin,
     filter_backends = (DjangoFilterBackend,)
     filterset_fields = ['field_of_study']
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context.update({"request": self.request})
+        return context
+
     def get_serializer_class(self):
         if self.action == 'retrieve':
             return StudentRetrieveListSerializer

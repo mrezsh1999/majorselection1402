@@ -122,7 +122,7 @@ class Student(User):
 
 
 class ReportCard(models.Model):
-    report_card_file = models.FileField(upload_to='report_card_file')
+    report_card_file = models.FileField(upload_to='report_card_file',  null=True, blank=True)
     student = models.ForeignKey(Student, on_delete=models.PROTECT, related_name='report_card', null=True)
 
     def __str__(self):
