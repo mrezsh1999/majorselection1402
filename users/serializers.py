@@ -8,8 +8,6 @@ class StudentLoginSerializer(serializers.ModelSerializer):
     token = serializers.SerializerMethodField('get_token')
     gender = serializers.SerializerMethodField('get_gender')
     field_of_study = serializers.SerializerMethodField('get_field_of_study')
-    quota = serializers.SlugRelatedField(read_only=True, slug_field='title')
-    quota_of_regions = serializers.SlugRelatedField(read_only=True, slug_field='title')
     province = serializers.SlugRelatedField(read_only=True, slug_field='title')
 
     # report_card = serializers.SerializerMethodField('get_report_card')
@@ -33,8 +31,8 @@ class StudentLoginSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Student
-        fields = ['id', 'name', 'gender', 'national_code', 'field_of_study', 'quota', 'quota_of_regions', 'province',
-                  'token']
+        fields = ['id', 'name', 'gender', 'national_code',
+                  'field_of_study', 'province', 'token']
 
 
 class AdvisorLoginSerializer(serializers.ModelSerializer):
