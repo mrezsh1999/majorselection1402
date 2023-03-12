@@ -1,7 +1,7 @@
 import os
 
 import pyotp as pyotp
-from django.http import HttpResponse
+from django.http import HttpResponse, Http404
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import mixins, status
 from rest_framework.decorators import action
@@ -9,6 +9,7 @@ from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
+from majorselection1402 import settings
 from users.models import Student, User, Advisor, ReportCard
 from users.serializers import StudentLoginSerializer, AdvisorLoginSerializer, StudentListSerializer, \
     StudentRetrieveListSerializer
@@ -110,10 +111,10 @@ class UserViewSet(mixins.ListModelMixin,
     @action(detail=False, methods=['GET'])
     def pdf(self, request):
         os.chdir(r'C:/Users/Mohammad Reza/PycharmProjects/majorselection1402/majorselection1402/media/report_card_file')
-        x = open('برنامه_آموزشگاه.pdf', "rb")
-        response = HttpResponse(x, content_type='application/pdf')
-        response['Content-Disposition'] = 'attachment; filename=tavana_pdf.pdf'
-        return response
+        with open('برنامه_آموزشگاه.pdf', 'rb') as fh:
+            response = HttpResponse(fh.read(), content_type="application/pdf")
+            response['Content-Disposition'] = 'inline; filename=' + os.path.basename('برنامه_آموزشگاه.pdf')
+            return response
 
 
 class ReportCardViewSet(mixins.CreateModelMixin,
