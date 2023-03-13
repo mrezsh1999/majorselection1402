@@ -110,11 +110,17 @@ class UserViewSet(mixins.ListModelMixin,
 
     @action(detail=False, methods=['GET'])
     def pdf(self, request):
-        os.chdir(r'C:/Users/Mohammad Reza/PycharmProjects/majorselection1402/majorselection1402/media/report_card_file')
-        with open('برنامه_آموزشگاه.pdf', 'rb') as fh:
-            response = HttpResponse(fh.read(), content_type="application/pdf")
-            response['Content-Disposition'] = 'inline; filename=' + os.path.basename('برنامه_آموزشگاه.pdf')
-            return response
+        try:
+            path = ReportCard.objects.get(student_id=request.GET.get('student_id')).report_card_file.path
+            file_path = os.path.join(settings.MEDIA_ROOT, path)
+            if os.path.exists(file_path):
+                with open(file_path, 'rb') as fh:
+                    response = HttpResponse(fh.read(), content_type="application/pdf")
+                    response['Content-Disposition'] = 'inline; filename=' + os.path.basename(file_path)
+                    return response
+            raise Http404
+        except ReportCard.DoesNotExist:
+            raise Http404
 
 
 class ReportCardViewSet(mixins.CreateModelMixin,
