@@ -2,7 +2,7 @@ from rest_framework import serializers
 from rest_framework.generics import get_object_or_404
 
 from booklet_information.models import BookletRow, SelectDefaultProvince, SelectDefaultMajor, SelectProvinceForMajor, \
-    SelectProvince, Province, Major
+    SelectProvince, Province, Major, University
 
 
 class InfoSerializer(serializers.ModelSerializer):
@@ -113,9 +113,13 @@ class MajorSelectionCreateSerializer(serializers.ModelSerializer):
     university = serializers.SlugRelatedField(
         slug_field='title', read_only=True)
     major_title = serializers.SerializerMethodField('get_major_title')
+    course = serializers.SerializerMethodField('get_major_course')
 
     def get_major_title(self, obj):
         return obj.major.title
+
+    def get_major_course(self, obj):
+        return obj.get_course_display()
 
     class Meta:
         model = BookletRow
@@ -145,3 +149,11 @@ class SelectProvinceForMajorSerializer(serializers.ModelSerializer):
     class Meta:
         model = SelectProvinceForMajor
         fields = ['major', 'major_title', 'select_province']
+
+
+class UniversityListSerializer(serializers.ModelSerializer):
+    province = serializers.SlugRelatedField(read_only=True, slug_field='name')
+
+    class Meta:
+        model = University
+        fields = ['id', 'title', 'province', 'rank']

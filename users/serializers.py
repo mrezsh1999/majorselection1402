@@ -1,8 +1,3 @@
-import base64
-import json
-import os
-
-from django.http import HttpResponse
 from rest_framework import serializers
 from rest_framework.authtoken.models import Token
 
@@ -72,4 +67,5 @@ class StudentRetrieveListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Student
-        fields = ['gender', 'national_code', 'field_of_study', 'volunteer_code', 'province', 'report_card']
+        fields = ['id', 'name', 'gender', 'national_code', 'field_of_study', 'volunteer_code', 'province',
+                  'report_card']

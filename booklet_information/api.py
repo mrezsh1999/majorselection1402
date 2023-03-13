@@ -10,7 +10,7 @@ from booklet_information.models import BookletRow, SelectDefaultProvince, Select
     Major, Province, University, SelectProvince
 from booklet_information.serializers import InfoSerializer, SelectDefaultProvinceListSerializer, \
     SelectProvinceForMajorCreateSerializer, MajorSerializer, ProvinceSerializer, MajorSelectionCreateSerializer, \
-    SelectProvinceForMajorSerializer
+    SelectProvinceForMajorSerializer, UniversityListSerializer
 
 
 class ListFilter(Filter):
@@ -262,3 +262,13 @@ class ProvinceViewSet(mixins.ListModelMixin,
     queryset = Province.objects.all().order_by('title')
     serializer_class = ProvinceSerializer
     search_fields = ['title']
+
+
+class UniversityViewSet(mixins.ListModelMixin,
+                        GenericViewSet):
+    model = University
+    queryset = University.objects.all()
+    serializer_class = UniversityListSerializer
+    filter_backends = (DjangoFilterBackend, filters.SearchFilter)
+    filter_fields = ['province', 'example__major__field_of_study']
+    search_fields = ['title', 'province__title']
