@@ -12,7 +12,7 @@ from rest_framework.viewsets import GenericViewSet
 from majorselection1402 import settings
 from users.models import Student, User, Advisor, ReportCard
 from users.serializers import StudentLoginSerializer, AdvisorLoginSerializer, StudentListSerializer, \
-    StudentRetrieveListSerializer
+    StudentRetrieveListSerializer, ReportCardSerializer
 
 
 class IsStudent(BasePermission):
@@ -48,6 +48,14 @@ class UserViewSet(mixins.ListModelMixin,
             return StudentRetrieveListSerializer
         else:
             return StudentListSerializer
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        instance.is_state_choose_booklet_rows = False
+        instance.is_state_choose_booklet_rows_done = False
+        instance.save()
+        return Response(serializer.data)
 
     def get_queryset(self):
         if self.request.user.is_advisor:
@@ -124,6 +132,10 @@ class UserViewSet(mixins.ListModelMixin,
 
 
 class ReportCardViewSet(mixins.CreateModelMixin,
-                        mixins.ListModelMixin,
                         GenericViewSet):
-    pass
+    model = ReportCard
+    serializer_class = ReportCardSerializer
+
+    def perform_create(self, serializer):
+        student = Student.objects.get(id=self.request.user.id)
+        serializer.save(student=student)

@@ -110,6 +110,10 @@ class Student(User):
     field_of_study = models.PositiveSmallIntegerField(choices=FIELD_OF_STUDY, null=True, blank=True)
     volunteer_code = models.IntegerField(null=True, blank=True)
 
+    is_state_choose_default = models.BooleanField(default=False)
+    is_state_choose_booklet_rows = models.BooleanField(default=False)
+    is_state_choose_booklet_rows_done = models.BooleanField(default=False)
+
     province = models.ForeignKey(Province, on_delete=models.PROTECT, null=True, blank=True)
     student_advisor = models.ForeignKey(Advisor, on_delete=models.PROTECT, null=True, blank=True)
 

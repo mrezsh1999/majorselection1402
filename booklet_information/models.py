@@ -107,21 +107,22 @@ class SelectProvince(models.Model):
 
 class SelectProvinceForMajor(models.Model):
     index = models.PositiveSmallIntegerField()
-    # student = models.ForeignKey(Student, on_delete=models.PROTECT)
+    student = models.ForeignKey('users.Student', on_delete=models.PROTECT, null=True, blank=True)
     major = models.ForeignKey(Major, on_delete=models.PROTECT)
     select_province = models.ManyToManyField(SelectProvince)
 
 
 class SelectDefaultProvince(models.Model):
     index = models.PositiveSmallIntegerField()
-    # student = models.ForeignKey(Student, on_delete=models.PROTECT)
+    student = models.ForeignKey('users.Student', on_delete=models.PROTECT, null=True, blank=True)
     province = models.ForeignKey(Province, on_delete=models.PROTECT)
 
 
 class SelectDefaultMajor(models.Model):
     index = models.PositiveSmallIntegerField()
-    # student = models.ForeignKey(Student, on_delete=models.PROTECT)
+    student = models.ForeignKey('users.Student', on_delete=models.PROTECT, null=True, blank=True)
     major = models.ForeignKey(Major, on_delete=models.PROTECT)
+
 
 # class MajorSelection(models.Model):
 #     example = models.ForeignKey(BookletRow, on_delete=models.PROTECT)

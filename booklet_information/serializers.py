@@ -3,11 +3,12 @@ from rest_framework.generics import get_object_or_404
 
 from booklet_information.models import BookletRow, SelectDefaultProvince, SelectDefaultMajor, SelectProvinceForMajor, \
     SelectProvince, Province, Major, University
+from users.models import Student
 
 
 class InfoSerializer(serializers.ModelSerializer):
-    university = serializers.SerializerMethodField('get_university')
-    major = serializers.SerializerMethodField('get_major')
+    university = serializers.SlugRelatedField(slug_field='title', read_only=True)
+    major_title = serializers.SerializerMethodField('get_major_title')
     course = serializers.SerializerMethodField('get_course')
     exam_based = serializers.SerializerMethodField('get_exam_based')
     gender = serializers.SerializerMethodField('get_gender')
@@ -17,29 +18,27 @@ class InfoSerializer(serializers.ModelSerializer):
     def get_university(self, obj):
         return obj.university.title
 
-    def get_major(self, obj):
+    def get_major_title(self, obj):
         return obj.major.title
 
     def get_course(self, obj):
         return obj.get_course_display()
 
     def get_exam_based(self, obj):
-        if obj.exam_based:
-            return 'با آزمون'
-        return 'صرفا با سوابق تحصیلی'
+        return obj.get_exam_based_display()
 
     def get_gender(self, obj):
         return obj.get_gender_display()
 
     def get_province(self, obj):
-        return obj.university.province.name
+        return obj.university.province.title
 
     def get_field_of_study(self, obj):
         return obj.major.get_field_of_study_display()
 
     class Meta:
         model = BookletRow
-        fields = ['id', 'university', 'major', 'course', 'exam_based', 'major_code', 'gender', 'province',
+        fields = ['id', 'province', 'university', 'major_title', 'major', 'major_code', 'course', 'exam_based', 'gender',
                   'field_of_study']
 
 
@@ -72,15 +71,17 @@ class SelectProvinceForMajorCreateSerializer(serializers.ModelSerializer):
             select_province = SelectProvince.objects.get_or_create(
                 province=province, index=counter)
             y = SelectProvinceForMajor.objects.get_or_create(**validated_data)
-            print(select_province[0])
             y[0].select_province.add(select_province[0])
             x.append(select_province[0])
         validated_data['select_province'] = x
+        student = Student.objects.get(id=self.context.get('request').GET.get('student_id'))
+        student.is_state_choose_default = True
+        student.save()
         return validated_data
 
     class Meta:
         model = SelectProvinceForMajor
-        fields = ['index', 'major', 'select_province']
+        fields = ['index', 'major', 'select_province', 'student']
 
     def to_representation(self, instance):
         repr = super().to_representation(instance)
@@ -112,8 +113,15 @@ class ProvinceSerializer(serializers.ModelSerializer):
 class MajorSelectionCreateSerializer(serializers.ModelSerializer):
     university = serializers.SlugRelatedField(
         slug_field='title', read_only=True)
+    province = serializers.SerializerMethodField('get_province')
     major_title = serializers.SerializerMethodField('get_major_title')
     course = serializers.SerializerMethodField('get_major_course')
+    exam_based = serializers.SerializerMethodField('get_exam_based')
+    gender = serializers.SerializerMethodField('get_gender')
+    field_of_study = serializers.SerializerMethodField('get_field_of_study')
+
+    def get_province(self, obj):
+        return obj.university.province.title
 
     def get_major_title(self, obj):
         return obj.major.title
@@ -121,10 +129,19 @@ class MajorSelectionCreateSerializer(serializers.ModelSerializer):
     def get_major_course(self, obj):
         return obj.get_course_display()
 
+    def get_exam_based(self, obj):
+        return obj.get_exam_based_display()
+
+    def get_gender(self, obj):
+        return obj.get_gender_display()
+
+    def get_field_of_study(self, obj):
+        return obj.major.get_field_of_study_display()
+
     class Meta:
         model = BookletRow
-        fields = ['id', 'major_code', 'exam_based', 'course',
-                  'gender', 'university', 'major', 'major_title']
+        fields = ['id', 'province', 'university', 'major_title', 'major', 'major_code', 'course', 'exam_based',
+                  'gender', 'field_of_study']
 
 
 class SelectProvinceManyToManySerializer(serializers.ModelSerializer):
@@ -152,8 +169,6 @@ class SelectProvinceForMajorSerializer(serializers.ModelSerializer):
 
 
 class UniversityListSerializer(serializers.ModelSerializer):
-    province = serializers.SlugRelatedField(read_only=True, slug_field='name')
-
     class Meta:
         model = University
-        fields = ['id', 'title', 'province', 'rank']
+        fields = ['id', 'title']

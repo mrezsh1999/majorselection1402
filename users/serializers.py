@@ -49,9 +49,29 @@ class AdvisorLoginSerializer(serializers.ModelSerializer):
 
 
 class StudentListSerializer(serializers.ModelSerializer):
+    field_of_study = serializers.SerializerMethodField('get_field_of_study')
+    province = serializers.SlugRelatedField(slug_field='title', read_only=True)
+    gender = serializers.SerializerMethodField('get_gender')
+    is_state_report_card = serializers.SerializerMethodField('get_is_state_report_card')
+
+    def get_is_state_report_card(self, obj):
+        try:
+            ReportCard.objects.get(student=obj)
+            return True
+        except ReportCard.DoesNotExist:
+            return False
+
+    def get_field_of_study(self, obj):
+        return obj.get_field_of_study_display()
+
+    def get_gender(self, obj):
+        return obj.get_gender_display()
+
     class Meta:
         model = Student
-        fields = '__all__'
+        fields = ['id', 'name', 'mobile', 'national_code', 'field_of_study', 'province', 'gender',
+                  'is_state_report_card', 'is_state_choose_default', 'is_state_choose_booklet_rows',
+                  'is_state_choose_booklet_rows_done']
 
 
 class StudentRetrieveListSerializer(serializers.ModelSerializer):
@@ -69,3 +89,9 @@ class StudentRetrieveListSerializer(serializers.ModelSerializer):
         model = Student
         fields = ['id', 'name', 'gender', 'national_code', 'field_of_study', 'volunteer_code', 'province',
                   'report_card']
+
+
+class ReportCardSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReportCard
+        fields = ['report_card_file']

@@ -11,6 +11,7 @@ from booklet_information.models import BookletRow, SelectDefaultProvince, Select
 from booklet_information.serializers import InfoSerializer, SelectDefaultProvinceListSerializer, \
     SelectProvinceForMajorCreateSerializer, MajorSerializer, ProvinceSerializer, MajorSelectionCreateSerializer, \
     SelectProvinceForMajorSerializer, UniversityListSerializer
+from users.models import Student
 
 
 class ListFilter(Filter):
@@ -34,10 +35,10 @@ class InfoFilter(FilterSet):
                   'major__field_of_study']
 
 
-# class StandardResultsSetPagination(PageNumberPagination):
-#     page_size = 20
-#     page_size_query_param = 'page_size'
-#     max_page_size = 1000
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 1000
 
 
 class InfoViewSet(mixins.ListModelMixin,
@@ -46,9 +47,9 @@ class InfoViewSet(mixins.ListModelMixin,
     model = BookletRow
     queryset = BookletRow.objects.all()
     serializer_class = InfoSerializer
-    # pagination_class = StandardResultsSetPagination
+    pagination_class = StandardResultsSetPagination
     filter_backends = (DjangoFilterBackend, filters.SearchFilter)
-    filter_class = InfoFilter
+    filterset_class = InfoFilter
     search_fields = ['major_code', 'major__title',
                      'university__title', 'university__province__title']
 
@@ -152,12 +153,11 @@ class InfoViewSet(mixins.ListModelMixin,
 
     @action(detail=False, methods=['POST', 'GET'])
     def booklet_rows_query(self, request):
-        if request.method == "POST":
+        student_id = request.GET.get('student_id')
+        if request.method == 'POST':
             all_rows = []
-            pardis_rows = []
             major_index = 0
-            province_index = 0
-            SelectProvinceForMajor.objects.all().delete()
+            SelectProvinceForMajor.objects.filter(student_id=student_id).delete()
             for data in request.data:
                 major_index += 1
                 province_index = 0
@@ -165,26 +165,23 @@ class InfoViewSet(mixins.ListModelMixin,
                     province_index += 1
                     select_province = SelectProvince.objects.get_or_create(
                         index=province_index, province_id=province['province'])
-                    select_provice_for_major = SelectProvinceForMajor.objects.get_or_create(
-                        index=major_index, major_id=data['major'])
-                    select_provice_for_major[0].select_province.add(
+                    select_province_for_major = SelectProvinceForMajor.objects.get_or_create(
+                        index=major_index, major_id=data['major'], student_id=student_id)
+                    select_province_for_major[0].select_province.add(
                         select_province[0])
                     daily_nightly_list = list(
-                        BookletRow.objects.filter(major_id=data['major'], university__province_id=province['province'],
-                                                  course__in=[0, 1]).order_by('course'))
+                        BookletRow.objects.filter(major_id=data['major'],
+                                                  university__province_id=province['province']))
                     all_rows += daily_nightly_list
 
-                    pardis_list = list(
-                        BookletRow.objects.filter(major_id=data['major'], university__province_id=province['province'],
-                                                  course=2))
-                    pardis_rows += pardis_list
-                all_rows += pardis_rows
-
+            student = Student.objects.get(id=student_id)
+            student.is_state_choose_booklet_rows = True
+            student.save()
             serializer = MajorSelectionCreateSerializer(all_rows, many=True)
             return Response(serializer.data)
 
-        elif request.method == "GET":
-            all_rows = SelectProvinceForMajor.objects.all()
+        elif request.method == 'GET':
+            all_rows = SelectProvinceForMajor.objects.filter(student_id=student_id)
             serializer = SelectProvinceForMajorSerializer(all_rows, many=True)
             return Response(serializer.data)
 
@@ -203,37 +200,32 @@ class SelectProvinceForMajorViewSet(mixins.CreateModelMixin,
     def get_serializer_class(self):
         if self.request.method == 'POST':
             return SelectProvinceForMajorCreateSerializer
-        # elif self.request.method == 'GET':
-        #     return SelectDefaultProvinceListSerializer
 
     def create(self, request, *args, **kwargs):
-        # student filter
+        student_id = request.GET.get('student_id')
         if request.data:
-            SelectDefaultMajor.objects.all().delete()
-            SelectDefaultProvince.objects.all().delete()
+            SelectDefaultMajor.objects.filter(student_id=student_id).delete()
+            SelectDefaultProvince.objects.filter(student_id=student_id).delete()
             major_index = 0
-            province_index = 0
             final_list = []
-            x = dict()
             for major in request.data[0]:
                 major_index += 1
                 province_index = 0
                 SelectDefaultMajor.objects.get_or_create(
-                    index=major_index, major_id=major['major'])
+                    index=major_index, major_id=major['major'], student_id=student_id)
                 x = major
                 select_province = []
                 for province in request.data[1]:
                     province_index += 1
                     SelectDefaultProvince.objects.get_or_create(
-                        index=province_index, province_id=province['province'])
+                        index=province_index, province_id=province['province'], student_id=student_id)
                     select_province.append(province)
-                    # print(select_province)
                     if province_index == len(request.data[1]):
                         x['select_province'] = select_province
+                        x['student'] = student_id
                         final_list.append(x)
 
-            # print(final_list)
-            SelectProvinceForMajor.objects.all().delete()
+            SelectProvinceForMajor.objects.filter(student_id=student_id).delete()
             counter = 0
             for select_province_for_major in final_list:
                 counter += 1
@@ -270,5 +262,5 @@ class UniversityViewSet(mixins.ListModelMixin,
     queryset = University.objects.all()
     serializer_class = UniversityListSerializer
     filter_backends = (DjangoFilterBackend, filters.SearchFilter)
-    filter_fields = ['province', 'example__major__field_of_study']
+    filterset_fields = ['province', 'example__major__field_of_study']
     search_fields = ['title', 'province__title']
