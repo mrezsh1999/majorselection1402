@@ -7,10 +7,11 @@ from rest_framework.viewsets import GenericViewSet
 from rest_framework import mixins, filters, status
 
 from booklet_information.models import BookletRow, SelectDefaultProvince, SelectDefaultMajor, SelectProvinceForMajor, \
-    Major, Province, University, SelectProvince
+    Major, Province, University, SelectProvince, MajorSelection
 from booklet_information.serializers import InfoSerializer, SelectDefaultProvinceListSerializer, \
-    SelectProvinceForMajorCreateSerializer, MajorSerializer, ProvinceSerializer, MajorSelectionCreateSerializer, \
-    SelectProvinceForMajorSerializer, UniversityListSerializer
+    SelectProvinceForMajorCreateSerializer, MajorSerializer, ProvinceSerializer, BookletRowsQueryCreateSerializer, \
+    BookletRowsQueryListSerializer, UniversityListSerializer, MajorSelectionListSerializer, \
+    MajorSelectionCreateSerializer
 from users.models import Student
 
 
@@ -177,12 +178,12 @@ class InfoViewSet(mixins.ListModelMixin,
             student = Student.objects.get(id=student_id)
             student.is_state_choose_booklet_rows = True
             student.save()
-            serializer = MajorSelectionCreateSerializer(all_rows, many=True)
+            serializer = BookletRowsQueryCreateSerializer(all_rows, many=True)
             return Response(serializer.data)
 
         elif request.method == 'GET':
             all_rows = SelectProvinceForMajor.objects.filter(student_id=student_id)
-            serializer = SelectProvinceForMajorSerializer(all_rows, many=True)
+            serializer = BookletRowsQueryListSerializer(all_rows, many=True)
             return Response(serializer.data)
 
 
@@ -264,3 +265,34 @@ class UniversityViewSet(mixins.ListModelMixin,
     filter_backends = (DjangoFilterBackend, filters.SearchFilter)
     filterset_fields = ['province', 'example__major__field_of_study']
     search_fields = ['title', 'province__title']
+
+
+class MajorSelectionViewSet(mixins.ListModelMixin,
+                            mixins.CreateModelMixin,
+                            mixins.UpdateModelMixin,
+                            GenericViewSet):
+    model = MajorSelection
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return MajorSelectionCreateSerializer
+        elif self.request.method == 'GET':
+            return MajorSelectionListSerializer
+
+    def get_queryset(self):
+        student_id = self.request.GET.get('student_id')
+        return MajorSelection.objects.filter(student_id=student_id).order_by('rank')
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data, many=True,
+                                         context={'student_id': request.GET.get('student_id')})
+        if serializer.is_valid():
+            MajorSelection.objects.filter(student_id=request.GET.get('student_id')).delete()
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            student = Student.objects.get(id=request.GET.get('student_id'))
+            student.is_state_choose_booklet_rows_done = True
+            student.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

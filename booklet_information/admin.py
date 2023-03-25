@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from booklet_information.models import Province, Major, University, BookletRow, SelectProvince, SelectProvinceForMajor, \
-    SelectDefaultProvince, SelectDefaultMajor
+    SelectDefaultProvince, SelectDefaultMajor, MajorSelection
 
 
 class ProvinceAdmin(admin.ModelAdmin):
@@ -61,3 +61,13 @@ class SelectDefaultMajorAdmin(admin.ModelAdmin):
 
 
 admin.site.register(SelectDefaultMajor, SelectDefaultMajorAdmin)
+
+
+class MajorSelectionAdmin(admin.ModelAdmin):
+    raw_id_fields = ('booklet_row', 'student')
+    ordering = ['rank']
+    list_display = ['rank', 'booklet_row', 'student']
+    list_filter = ['student']
+
+
+admin.site.register(MajorSelection, MajorSelectionAdmin)

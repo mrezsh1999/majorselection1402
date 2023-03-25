@@ -1,8 +1,9 @@
 from rest_framework import serializers
 from rest_framework.generics import get_object_or_404
+from rest_framework.validators import UniqueTogetherValidator
 
 from booklet_information.models import BookletRow, SelectDefaultProvince, SelectDefaultMajor, SelectProvinceForMajor, \
-    SelectProvince, Province, Major, University
+    SelectProvince, Province, Major, University, MajorSelection
 from users.models import Student
 
 
@@ -38,7 +39,8 @@ class InfoSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = BookletRow
-        fields = ['id', 'province', 'university', 'major_title', 'major', 'major_code', 'course', 'exam_based', 'gender',
+        fields = ['id', 'province', 'university', 'major_title', 'major', 'major_code', 'course', 'exam_based',
+                  'gender',
                   'field_of_study']
 
 
@@ -110,7 +112,7 @@ class ProvinceSerializer(serializers.ModelSerializer):
         fields = ['id', 'title']
 
 
-class MajorSelectionCreateSerializer(serializers.ModelSerializer):
+class BookletRowsQueryCreateSerializer(serializers.ModelSerializer):
     university = serializers.SlugRelatedField(
         slug_field='title', read_only=True)
     province = serializers.SerializerMethodField('get_province')
@@ -156,7 +158,7 @@ class SelectProvinceManyToManySerializer(serializers.ModelSerializer):
         fields = ['province', 'province_title']
 
 
-class SelectProvinceForMajorSerializer(serializers.ModelSerializer):
+class BookletRowsQueryListSerializer(serializers.ModelSerializer):
     major_title = serializers.SerializerMethodField('get_major_title')
     select_province = SelectProvinceManyToManySerializer(many=True)
 
@@ -172,3 +174,77 @@ class UniversityListSerializer(serializers.ModelSerializer):
     class Meta:
         model = University
         fields = ['id', 'title']
+
+
+class MajorSelectionListSerializer(serializers.ModelSerializer):
+    university = serializers.SerializerMethodField('get_university')
+    province = serializers.SerializerMethodField('get_province')
+    major_title = serializers.SerializerMethodField('get_major_title')
+    course = serializers.SerializerMethodField('get_major_course')
+    exam_based = serializers.SerializerMethodField('get_exam_based')
+    gender = serializers.SerializerMethodField('get_gender')
+    field_of_study = serializers.SerializerMethodField('get_field_of_study')
+    major = serializers.SerializerMethodField('get_major')
+    major_code = serializers.SerializerMethodField('get_major_code')
+
+    def get_major_code(self, obj):
+        return obj.booklet_row.major_code
+
+    def get_major(self, obj):
+        return obj.booklet_row.major.id
+
+    def get_university(self, obj):
+        return obj.booklet_row.university.title
+
+    def get_province(self, obj):
+        return obj.booklet_row.university.province.title
+
+    def get_major_title(self, obj):
+        return obj.booklet_row.major.title
+
+    def get_major_course(self, obj):
+        return obj.booklet_row.get_course_display()
+
+    def get_exam_based(self, obj):
+        return obj.booklet_row.get_exam_based_display()
+
+    def get_gender(self, obj):
+        return obj.booklet_row.get_gender_display()
+
+    def get_field_of_study(self, obj):
+        return obj.booklet_row.major.get_field_of_study_display()
+
+    class Meta:
+        model = MajorSelection
+        fields = ['rank', 'province', 'university', 'major_title', 'major', 'major_code', 'course', 'exam_based',
+                  'gender', 'field_of_study']
+
+
+class HumanListSerializer(serializers.ListSerializer):
+
+    def validate(self, data):
+        validation_set = set()
+
+        for item in data:
+            if item['booklet_row'] in validation_set:
+                raise serializers.ValidationError('!رشته [{}] تکراری است'.format(item['booklet_row']))
+            else:
+                validation_set.add(item['booklet_row'])
+
+        return data
+
+
+class MajorSelectionCreateSerializer(serializers.ModelSerializer):
+    rank = 0
+
+    def create(self, validated_data):
+        self.rank += 1
+        obj = MajorSelection.objects.create(**validated_data, rank=self.rank,
+                                            student_id=self.context.get('student_id'))
+        obj.save()
+        return obj
+
+    class Meta:
+        model = MajorSelection
+        fields = ['id', 'booklet_row']
+        list_serializer_class = HumanListSerializer

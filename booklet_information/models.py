@@ -124,14 +124,15 @@ class SelectDefaultMajor(models.Model):
     major = models.ForeignKey(Major, on_delete=models.PROTECT)
 
 
-# class MajorSelection(models.Model):
-#     example = models.ForeignKey(BookletRow, on_delete=models.PROTECT)
-#     student = models.ForeignKey('users.Student', on_delete=models.PROTECT)
-#     rank = models.PositiveSmallIntegerField(null=True, blank=True)
-#
-#     def __str__(self):
-#         return '{} {} {}'.format(self.student.name, self.example.major.title, self.example.university.title)
-#
-#     class Meta:
-#         verbose_name = _('major selection')
-#         verbose_name_plural = _('majors selection')
+class MajorSelection(models.Model):
+    booklet_row = models.ForeignKey(BookletRow, on_delete=models.PROTECT)
+    student = models.ForeignKey('users.Student', on_delete=models.PROTECT)
+    rank = models.PositiveSmallIntegerField(null=True, blank=True)
+
+    def __str__(self):
+        return '{} {} {}'.format(self.student.name, self.booklet_row.major.title, self.booklet_row.university.title)
+
+    class Meta:
+        unique_together = ('booklet_row', 'student')
+        verbose_name = _('major selection')
+        verbose_name_plural = _('majors selection')
