@@ -1,4 +1,8 @@
+import os
+
+from django.http import HttpResponse
 from django_filters.rest_framework import DjangoFilterBackend, Filter, FilterSet
+from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action
 from pyexcel_xlsx import get_data
 from rest_framework.pagination import PageNumberPagination
@@ -12,7 +16,19 @@ from booklet_information.serializers import InfoSerializer, SelectDefaultProvinc
     SelectProvinceForMajorCreateSerializer, MajorSerializer, ProvinceSerializer, BookletRowsQueryCreateSerializer, \
     BookletRowsQueryListSerializer, UniversityListSerializer, MajorSelectionListSerializer, \
     MajorSelectionCreateSerializer
-from users.models import Student
+from users.models import Student, User
+
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.platypus import SimpleDocTemplate, Table, Paragraph
+from reportlab.lib.enums import TA_RIGHT, TA_CENTER, TA_JUSTIFY
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+from bidi.algorithm import get_display
+from rtl import reshaper
+# import arabic_reshaper
+import textwrap
 
 
 class ListFilter(Filter):
@@ -296,3 +312,123 @@ class MajorSelectionViewSet(mixins.ListModelMixin,
             return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
         else:
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['GET'])
+    def pdf(self, request):
+        global response
+        os.chdir(r'C:/Users/Mohammad Reza/PycharmProjects/majorselection1402/booklet_information/persian')
+        pdfmetrics.registerFont(TTFont('Persian', 'Bahij-Nazanin-Regular.ttf'))
+        styles = getSampleStyleSheet()
+        styles.add(ParagraphStyle(name='Right', alignment=TA_CENTER, fontName='Persian', fontSize=10))
+
+        def get_farsi_text(text):
+            if reshaper.has_arabic_letters(text):
+                words = text.split()
+                reshaped_words = []
+                for word in words:
+                    if reshaper.has_arabic_letters(word):
+                        # for reshaping and concating words
+                        reshaped_text = reshaper.reshape(word)
+                        # for right to left
+                        bidi_text = get_display(reshaped_text)
+                        reshaped_words.append(bidi_text)
+                    else:
+                        reshaped_words.append(word)
+                reshaped_words.reverse()
+                return ' '.join(reshaped_words)
+            return text
+            # return bidi_text
+            # return text
+
+        def get_farsi_bulleted_text(text, wrap_length=None):
+            farsi_text = get_farsi_text(text)
+            if wrap_length:
+                line_list = textwrap.wrap(farsi_text, wrap_length)
+                line_list.reverse()
+                # line_list[0] = '{} &#x02022;'.format(line_list[0])
+                farsi_text = '<br/>'.join(line_list)
+                return '<font>%s</font>' % farsi_text
+            return '<font>%s &#x02022;</font>' % farsi_text
+
+        data = []
+        key = request.GET.get('Token')
+        student_id = Token.objects.get(key=key).user_id
+        if User.objects.get(id=student_id).is_student:
+            major_selections = MajorSelection.objects.filter(student_id=student_id).order_by('rank').values_list(
+                'booklet_row__major_code', 'booklet_row__university__province__title', 'booklet_row__exam_based',
+                'booklet_row__course', 'booklet_row__major__title', 'booklet_row__university__title')
+            q = 1
+            for major_selection in major_selections:
+                x = list(major_selection)
+                x.insert(6, q)
+                q += 1
+                data.append(x)
+
+            response = HttpResponse(content_type='application/pdf')
+            response['Content-Disposition'] = 'attachment; filename=tavana_pdf.pdf'
+
+            elements = []
+            x = get_farsi_bulleted_text('کد رشته', 40)
+            p = Paragraph(x, styles['Right'])
+            list_column_head = [p, 'نام استان', 'نحوه پذیرش', 'دوره تحصیلی', 'عنوان رشته', 'نام دانشگاه', ' ']
+            data.insert(0, list_column_head)
+            for i in range(len(data)):
+                for j in range(1, 6):
+
+                    if j == 3:
+                        if data[i][j] == 0:
+                            data[i][j] = 'روزانه'
+                        elif data[i][j] == 1:
+                            data[i][j] = 'نوبت دوم'
+                        elif data[i][j] == 2:
+                            data[i][j] = 'پردیس خودگردان'
+                        elif data[i][j] == 3:
+                            data[i][j] = 'شهریه پرداز'
+                        elif data[i][j] == 4:
+                            data[i][j] = 'پیام نور'
+                        elif data[i][j] == 5:
+                            data[i][j] = 'غیرانتفاعی'
+                        elif data[i][j] == 6:
+                            data[i][j] = 'مجازی'
+                        elif data[i][j] == 7:
+                            data[i][j] = 'خودگردان آزاد'
+                        elif data[i][j] == 8:
+                            data[i][j] = 'آزاد تمام وقت'
+                        elif data[i][j] == 9:
+                            data[i][j] = 'فرهنگیان'
+                        elif data[i][j] == 10:
+                            data[i][j] = 'بومی'
+
+                    elif j == 2:
+                        if data[i][j]:
+                            data[i][j] = 'با آزمون'
+                        elif not data[i][j]:
+                            data[i][j] = 'بدون آزمون'
+
+                    x = get_farsi_bulleted_text(data[i][j], 30)
+                    p = Paragraph(x, styles['Right'])
+                    data[i][j] = p
+
+            doc = SimpleDocTemplate(response)
+            table = Table(data, colWidths=[50, 85, 60, 80, 120, 150, 20])
+            table.setStyle(([('BACKGROUND', (0, 0), (-1, 0), colors.mediumpurple),
+                             ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+                             ('VALIGN', (0, 0), (0, -1), 'MIDDLE'),
+                             ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+                             ('VALIGN', (1, 0), (1, -1), 'MIDDLE'),
+                             ('ALIGN', (2, 0), (2, -1), 'CENTER'),
+                             ('VALIGN', (2, 0), (2, -1), 'MIDDLE'),
+                             ('ALIGN', (3, 0), (3, -1), 'CENTER'),
+                             ('VALIGN', (3, 0), (3, -1), 'MIDDLE'),
+                             ('ALIGN', (4, 0), (4, -1), 'CENTER'),
+                             ('VALIGN', (4, 0), (4, -1), 'MIDDLE'),
+                             ('ALIGN', (5, 0), (5, -1), 'CENTER'),
+                             ('VALIGN', (5, 0), (5, -1), 'MIDDLE'),
+                             ('ALIGN', (6, 0), (6, -1), 'CENTER'),
+                             ('VALIGN', (6, 0), (6, -1), 'MIDDLE'),
+                             ('BOX', (0, 0), (-1, 0), 2, colors.black),
+                             ('INNERGRID', (0, 0), (-1, -1), 0.75, colors.black),
+                             ('BOX', (0, 0), (-1, -1), 0.75, colors.black)]))
+            elements.append(table)
+            doc.build(elements)
+        return response
