@@ -216,7 +216,7 @@ class MajorSelectionListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = MajorSelection
-        fields = ['rank', 'province', 'university', 'major_title', 'major', 'major_code', 'course', 'exam_based',
+        fields = ['id', 'rank', 'province', 'university', 'major_title', 'major', 'major_code', 'course', 'exam_based',
                   'gender', 'field_of_study']
 
 
@@ -248,3 +248,9 @@ class MajorSelectionCreateSerializer(serializers.ModelSerializer):
         model = MajorSelection
         fields = ['id', 'booklet_row']
         list_serializer_class = HumanListSerializer
+
+
+class MajorSelectionDeleteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MajorSelection
+        fields = ['rank', 'student', 'booklet_row']

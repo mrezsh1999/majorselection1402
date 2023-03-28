@@ -15,7 +15,7 @@ from booklet_information.models import BookletRow, SelectDefaultProvince, Select
 from booklet_information.serializers import InfoSerializer, SelectDefaultProvinceListSerializer, \
     SelectProvinceForMajorCreateSerializer, MajorSerializer, ProvinceSerializer, BookletRowsQueryCreateSerializer, \
     BookletRowsQueryListSerializer, UniversityListSerializer, MajorSelectionListSerializer, \
-    MajorSelectionCreateSerializer
+    MajorSelectionCreateSerializer, MajorSelectionDeleteSerializer
 from users.models import Student, User
 
 from reportlab.lib import colors
@@ -285,7 +285,7 @@ class UniversityViewSet(mixins.ListModelMixin,
 
 class MajorSelectionViewSet(mixins.ListModelMixin,
                             mixins.CreateModelMixin,
-                            mixins.UpdateModelMixin,
+                            mixins.DestroyModelMixin,
                             GenericViewSet):
     model = MajorSelection
 
@@ -294,6 +294,8 @@ class MajorSelectionViewSet(mixins.ListModelMixin,
             return MajorSelectionCreateSerializer
         elif self.request.method == 'GET':
             return MajorSelectionListSerializer
+        elif self.request.method == "DELETE":
+            return MajorSelectionDeleteSerializer
 
     def get_queryset(self):
         student_id = self.request.GET.get('student_id')
@@ -312,6 +314,19 @@ class MajorSelectionViewSet(mixins.ListModelMixin,
             return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
         else:
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = MajorSelection.objects.filter(id__in=kwargs['pk'].split(','))
+        student = MajorSelection.objects.get(id=kwargs['pk'].split(',')[0]).student
+        self.perform_destroy(instance)
+        ranks = MajorSelection.objects.filter(student=student).order_by('rank')
+        y = 0
+        for rank in ranks:
+            y += 1
+            serializer = self.get_serializer(rank, data={'rank': y}, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=['GET'])
     def pdf(self, request):
