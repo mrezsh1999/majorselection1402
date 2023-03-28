@@ -351,84 +351,87 @@ class MajorSelectionViewSet(mixins.ListModelMixin,
             return '<font>%s &#x02022;</font>' % farsi_text
 
         data = []
-        key = request.GET.get('Token')
-        student_id = Token.objects.get(key=key).user_id
-        if User.objects.get(id=student_id).is_student:
-            major_selections = MajorSelection.objects.filter(student_id=student_id).order_by('rank').values_list(
-                'booklet_row__major_code', 'booklet_row__university__province__title', 'booklet_row__exam_based',
-                'booklet_row__course', 'booklet_row__major__title', 'booklet_row__university__title')
-            q = 1
-            for major_selection in major_selections:
-                x = list(major_selection)
-                x.insert(6, q)
-                q += 1
-                data.append(x)
+        student_id = None
+        if request.user.is_advisor:
+            student_id = request.GET.get('student_id')
+        elif request.user.is_student:
+            student_id = request.user.id
 
-            response = HttpResponse(content_type='application/pdf')
-            response['Content-Disposition'] = 'attachment; filename=tavana_pdf.pdf'
+        major_selections = MajorSelection.objects.filter(student_id=student_id).order_by('rank').values_list(
+            'booklet_row__major_code', 'booklet_row__university__province__title', 'booklet_row__exam_based',
+            'booklet_row__course', 'booklet_row__major__title', 'booklet_row__university__title')
+        q = 1
+        for major_selection in major_selections:
+            x = list(major_selection)
+            x.insert(6, q)
+            q += 1
+            data.append(x)
 
-            elements = []
-            x = get_farsi_bulleted_text('کد رشته', 40)
-            p = Paragraph(x, styles['Right'])
-            list_column_head = [p, 'نام استان', 'نحوه پذیرش', 'دوره تحصیلی', 'عنوان رشته', 'نام دانشگاه', ' ']
-            data.insert(0, list_column_head)
-            for i in range(len(data)):
-                for j in range(1, 6):
+        response = HttpResponse(content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename=tavana_pdf.pdf'
 
-                    if j == 3:
-                        if data[i][j] == 0:
-                            data[i][j] = 'روزانه'
-                        elif data[i][j] == 1:
-                            data[i][j] = 'نوبت دوم'
-                        elif data[i][j] == 2:
-                            data[i][j] = 'پردیس خودگردان'
-                        elif data[i][j] == 3:
-                            data[i][j] = 'شهریه پرداز'
-                        elif data[i][j] == 4:
-                            data[i][j] = 'پیام نور'
-                        elif data[i][j] == 5:
-                            data[i][j] = 'غیرانتفاعی'
-                        elif data[i][j] == 6:
-                            data[i][j] = 'مجازی'
-                        elif data[i][j] == 7:
-                            data[i][j] = 'خودگردان آزاد'
-                        elif data[i][j] == 8:
-                            data[i][j] = 'آزاد تمام وقت'
-                        elif data[i][j] == 9:
-                            data[i][j] = 'فرهنگیان'
-                        elif data[i][j] == 10:
-                            data[i][j] = 'بومی'
+        elements = []
+        x = get_farsi_bulleted_text('کد رشته', 40)
+        p = Paragraph(x, styles['Right'])
+        list_column_head = [p, 'نام استان', 'نحوه پذیرش', 'دوره تحصیلی', 'عنوان رشته', 'نام دانشگاه', ' ']
+        data.insert(0, list_column_head)
+        for i in range(len(data)):
+            for j in range(1, 6):
 
-                    elif j == 2:
-                        if data[i][j]:
-                            data[i][j] = 'با آزمون'
-                        elif not data[i][j]:
-                            data[i][j] = 'بدون آزمون'
+                if j == 3:
+                    if data[i][j] == 0:
+                        data[i][j] = 'روزانه'
+                    elif data[i][j] == 1:
+                        data[i][j] = 'نوبت دوم'
+                    elif data[i][j] == 2:
+                        data[i][j] = 'پردیس خودگردان'
+                    elif data[i][j] == 3:
+                        data[i][j] = 'شهریه پرداز'
+                    elif data[i][j] == 4:
+                        data[i][j] = 'پیام نور'
+                    elif data[i][j] == 5:
+                        data[i][j] = 'غیرانتفاعی'
+                    elif data[i][j] == 6:
+                        data[i][j] = 'مجازی'
+                    elif data[i][j] == 7:
+                        data[i][j] = 'خودگردان آزاد'
+                    elif data[i][j] == 8:
+                        data[i][j] = 'آزاد تمام وقت'
+                    elif data[i][j] == 9:
+                        data[i][j] = 'فرهنگیان'
+                    elif data[i][j] == 10:
+                        data[i][j] = 'بومی'
 
-                    x = get_farsi_bulleted_text(data[i][j], 30)
-                    p = Paragraph(x, styles['Right'])
-                    data[i][j] = p
+                elif j == 2:
+                    if data[i][j]:
+                        data[i][j] = 'با آزمون'
+                    elif not data[i][j]:
+                        data[i][j] = 'بدون آزمون'
 
-            doc = SimpleDocTemplate(response)
-            table = Table(data, colWidths=[50, 85, 60, 80, 120, 150, 20])
-            table.setStyle(([('BACKGROUND', (0, 0), (-1, 0), colors.mediumpurple),
-                             ('ALIGN', (0, 0), (0, -1), 'CENTER'),
-                             ('VALIGN', (0, 0), (0, -1), 'MIDDLE'),
-                             ('ALIGN', (1, 0), (1, -1), 'CENTER'),
-                             ('VALIGN', (1, 0), (1, -1), 'MIDDLE'),
-                             ('ALIGN', (2, 0), (2, -1), 'CENTER'),
-                             ('VALIGN', (2, 0), (2, -1), 'MIDDLE'),
-                             ('ALIGN', (3, 0), (3, -1), 'CENTER'),
-                             ('VALIGN', (3, 0), (3, -1), 'MIDDLE'),
-                             ('ALIGN', (4, 0), (4, -1), 'CENTER'),
-                             ('VALIGN', (4, 0), (4, -1), 'MIDDLE'),
-                             ('ALIGN', (5, 0), (5, -1), 'CENTER'),
-                             ('VALIGN', (5, 0), (5, -1), 'MIDDLE'),
-                             ('ALIGN', (6, 0), (6, -1), 'CENTER'),
-                             ('VALIGN', (6, 0), (6, -1), 'MIDDLE'),
-                             ('BOX', (0, 0), (-1, 0), 2, colors.black),
-                             ('INNERGRID', (0, 0), (-1, -1), 0.75, colors.black),
-                             ('BOX', (0, 0), (-1, -1), 0.75, colors.black)]))
-            elements.append(table)
-            doc.build(elements)
+                x = get_farsi_bulleted_text(data[i][j], 30)
+                p = Paragraph(x, styles['Right'])
+                data[i][j] = p
+
+        doc = SimpleDocTemplate(response)
+        table = Table(data, colWidths=[50, 85, 60, 80, 120, 150, 20])
+        table.setStyle(([('BACKGROUND', (0, 0), (-1, 0), colors.mediumpurple),
+                         ('ALIGN', (0, 0), (0, -1), 'CENTER'),
+                         ('VALIGN', (0, 0), (0, -1), 'MIDDLE'),
+                         ('ALIGN', (1, 0), (1, -1), 'CENTER'),
+                         ('VALIGN', (1, 0), (1, -1), 'MIDDLE'),
+                         ('ALIGN', (2, 0), (2, -1), 'CENTER'),
+                         ('VALIGN', (2, 0), (2, -1), 'MIDDLE'),
+                         ('ALIGN', (3, 0), (3, -1), 'CENTER'),
+                         ('VALIGN', (3, 0), (3, -1), 'MIDDLE'),
+                         ('ALIGN', (4, 0), (4, -1), 'CENTER'),
+                         ('VALIGN', (4, 0), (4, -1), 'MIDDLE'),
+                         ('ALIGN', (5, 0), (5, -1), 'CENTER'),
+                         ('VALIGN', (5, 0), (5, -1), 'MIDDLE'),
+                         ('ALIGN', (6, 0), (6, -1), 'CENTER'),
+                         ('VALIGN', (6, 0), (6, -1), 'MIDDLE'),
+                         ('BOX', (0, 0), (-1, 0), 2, colors.black),
+                         ('INNERGRID', (0, 0), (-1, -1), 0.75, colors.black),
+                         ('BOX', (0, 0), (-1, -1), 0.75, colors.black)]))
+        elements.append(table)
+        doc.build(elements)
         return response
