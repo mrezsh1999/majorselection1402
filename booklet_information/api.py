@@ -6,6 +6,7 @@ from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action
 from pyexcel_xlsx import get_data
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 from rest_framework import mixins, filters, status
@@ -27,8 +28,22 @@ from reportlab.pdfbase.ttfonts import TTFont
 
 from bidi.algorithm import get_display
 from rtl import reshaper
-# import arabic_reshaper
 import textwrap
+
+
+class IsStudent(BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_student is True
+
+
+class IsManager(BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_manager is True
+
+
+class IsAdvisor(BasePermission):
+    def has_permission(self, request, view):
+        return request.user.is_advisor is True
 
 
 class ListFilter(Filter):

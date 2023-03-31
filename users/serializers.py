@@ -9,8 +9,7 @@ class StudentLoginSerializer(serializers.ModelSerializer):
     gender = serializers.SerializerMethodField('get_gender')
     field_of_study = serializers.SerializerMethodField('get_field_of_study')
     province = serializers.SlugRelatedField(read_only=True, slug_field='title')
-
-    # report_card = serializers.SerializerMethodField('get_report_card')
+    user_type = serializers.SerializerMethodField('get_user_type')
 
     def get_token(self, obj):
         Token.objects.filter(user=obj).delete()
@@ -23,29 +22,34 @@ class StudentLoginSerializer(serializers.ModelSerializer):
     def get_field_of_study(self, obj):
         return obj.get_field_of_study_display()
 
-    # def get_report_card(self, obj):
-    #     if ReportCard.objects.filter(student=obj):
-    #         return True
-    #     else:
-    #         return False
+    def get_user_type(self, obj):
+        return 'student'
+
 
     class Meta:
         model = Student
         fields = ['id', 'name', 'gender', 'national_code',
-                  'field_of_study', 'province', 'token']
+                  'field_of_study', 'province', 'token', 'user_type']
 
 
 class AdvisorLoginSerializer(serializers.ModelSerializer):
     token = serializers.SerializerMethodField('get_token')
+    user_type = serializers.SerializerMethodField('get_user_type')
 
     def get_token(self, obj):
         Token.objects.filter(user=obj).delete()
         token = Token.objects.create(user=obj)
         return token.key
 
+    def get_user_type(self, obj):
+        if obj.is_advisor:
+            return 'advisor'
+        elif obj.is_manager:
+            return 'manager'
+
     class Meta:
         model = Advisor
-        fields = ['id', 'name', 'token']
+        fields = ['id', 'name', 'token', 'user_type']
 
 
 class StudentListSerializer(serializers.ModelSerializer):

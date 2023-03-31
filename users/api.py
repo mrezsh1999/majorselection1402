@@ -10,7 +10,7 @@ from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
 from majorselection1402 import settings
-from users.models import Student, User, Advisor, ReportCard
+from users.models import Student, User, Advisor, ReportCard, Manager
 from users.serializers import StudentLoginSerializer, AdvisorLoginSerializer, StudentListSerializer, \
     StudentRetrieveListSerializer, ReportCardSerializer
 
@@ -99,8 +99,8 @@ class UserViewSet(mixins.ListModelMixin,
 
         elif User.objects.filter(mobile=mobile, is_manager=True):
             if UserViewSet.OTP.verify(request.data['otp']):
-                advisor = Advisor.objects.get(mobile=mobile)
-                serializer = AdvisorLoginSerializer(advisor)
+                manager = Manager.objects.get(mobile=mobile)
+                serializer = AdvisorLoginSerializer(manager)
                 return Response(serializer.data, status=status.HTTP_201_CREATED)
             else:
                 return Response('OTP is wrong/expired', status=status.HTTP_400_BAD_REQUEST)
