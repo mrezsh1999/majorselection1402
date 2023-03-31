@@ -16,7 +16,7 @@ from booklet_information.models import BookletRow, SelectDefaultProvince, Select
 from booklet_information.serializers import InfoSerializer, SelectDefaultProvinceListSerializer, \
     SelectProvinceForMajorCreateSerializer, MajorSerializer, ProvinceSerializer, BookletRowsQueryCreateSerializer, \
     BookletRowsQueryListSerializer, UniversityListSerializer, MajorSelectionListSerializer, \
-    MajorSelectionCreateSerializer, MajorSelectionDeleteSerializer
+    MajorSelectionCreateSerializer, MajorSelectionDeleteSerializer, MajorSelectionResetSerializer
 from users.models import Student, User
 
 from reportlab.lib import colors
@@ -342,6 +342,21 @@ class MajorSelectionViewSet(mixins.ListModelMixin,
             serializer.is_valid(raise_exception=True)
             serializer.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=['POST'])
+    def reset_major_selection(self, request):
+        student_id = request.GET.get('student_id')
+        select_province_for_majors = SelectProvinceForMajor.objects.filter(student_id=student_id).order_by('index')
+        booklet_rows = []
+        for select_province_for_major in select_province_for_majors:
+            major_id = select_province_for_major.major_id
+            select_province = select_province_for_major.select_province
+            for province in select_province.order_by('index'):
+                province_id = province.id
+                booklet_row = BookletRow.objects.filter(major_id=major_id, university__province_id=province_id)
+                booklet_rows += booklet_row
+        serializer = MajorSelectionResetSerializer(booklet_rows, many=True, context={'student_id': student_id})
+        return Response(serializer.data)
 
     @action(detail=False, methods=['GET'])
     def pdf(self, request):

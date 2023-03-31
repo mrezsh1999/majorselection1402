@@ -52,9 +52,6 @@ class UserViewSet(mixins.ListModelMixin,
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = self.get_serializer(instance)
-        instance.is_state_choose_booklet_rows = False
-        instance.is_state_choose_booklet_rows_done = False
-        instance.save()
         return Response(serializer.data)
 
     def get_queryset(self):

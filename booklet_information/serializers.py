@@ -254,3 +254,43 @@ class MajorSelectionDeleteSerializer(serializers.ModelSerializer):
     class Meta:
         model = MajorSelection
         fields = ['rank', 'student', 'booklet_row']
+
+
+class MajorSelectionResetSerializer(serializers.ModelSerializer):
+    university = serializers.SlugRelatedField(
+        slug_field='title', read_only=True)
+    province = serializers.SerializerMethodField('get_province')
+    major_title = serializers.SerializerMethodField('get_major_title')
+    course = serializers.SerializerMethodField('get_major_course')
+    exam_based = serializers.SerializerMethodField('get_exam_based')
+    gender = serializers.SerializerMethodField('get_gender')
+    field_of_study = serializers.SerializerMethodField('get_field_of_study')
+    rank = serializers.SerializerMethodField('get_rank')
+
+    def get_province(self, obj):
+        return obj.university.province.title
+
+    def get_major_title(self, obj):
+        return obj.major.title
+
+    def get_major_course(self, obj):
+        return obj.get_course_display()
+
+    def get_exam_based(self, obj):
+        return obj.get_exam_based_display()
+
+    def get_gender(self, obj):
+        return obj.get_gender_display()
+
+    def get_field_of_study(self, obj):
+        return obj.major.get_field_of_study_display()
+
+    def get_rank(self, obj):
+        major_selection = MajorSelection.objects.filter(student_id=self.context.get('student_id'))
+        if obj in major_selection:
+            return MajorSelection.objects.get(booklet_row=obj).rank
+
+    class Meta:
+        model = BookletRow
+        fields = ['id', 'province', 'university', 'major_title', 'major', 'major_code', 'course', 'exam_based',
+                  'gender', 'field_of_study', 'rank']
