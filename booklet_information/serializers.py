@@ -286,8 +286,7 @@ class MajorSelectionResetSerializer(serializers.ModelSerializer):
         return obj.major.get_field_of_study_display()
 
     def get_rank(self, obj):
-        major_selection = MajorSelection.objects.filter(student_id=self.context.get('student_id'))
-        if obj in major_selection:
+        if (obj.id,) in MajorSelection.objects.filter(student_id=self.context.get('student_id')).values_list('booklet_row_id'):
             return MajorSelection.objects.get(booklet_row=obj).rank
 
     class Meta:
