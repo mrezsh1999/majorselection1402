@@ -9,17 +9,17 @@ class Province(models.Model):
         return self.title
 
     class Meta:
-        verbose_name = _('Province')
-        verbose_name_plural = _('Provinces')
+        verbose_name = _("Province")
+        verbose_name_plural = _("Provinces")
 
 
 class Major(models.Model):
     FIELD_OF_STUDY = (
-        (0, _('ریاضی')),
-        (1, _('تجربی')),
-        (2, _('انسانی')),
-        (3, _('هنر')),
-        (4, _('زبان'))
+        (0, _("ریاضی")),
+        (1, _("تجربی")),
+        (2, _("انسانی")),
+        (3, _("هنر")),
+        (4, _("زبان")),
     )
 
     title = models.CharField(max_length=512)
@@ -29,8 +29,8 @@ class Major(models.Model):
         return self.title
 
     class Meta:
-        verbose_name = _('Major')
-        verbose_name_plural = _('Majors')
+        verbose_name = _("Major")
+        verbose_name_plural = _("Majors")
 
 
 class University(models.Model):
@@ -42,8 +42,8 @@ class University(models.Model):
         return self.title
 
     class Meta:
-        verbose_name = _('University')
-        verbose_name_plural = _('Universities')
+        verbose_name = _("University")
+        verbose_name_plural = _("Universities")
 
 
 class BookletRow(models.Model):
@@ -60,29 +60,26 @@ class BookletRow(models.Model):
     BOMI = 10
 
     COURSE = (
-        (DAILY, _('روزانه')),
-        (NIGHTLY, _('نوبت دوم')),
-        (PARDIS, _('پردیس خودگردان')),
-        (SHAHRIEPARDAZ, _('شهریه پرداز')),
-        (PAYAMNOOR, _('پیام نور')),
-        (GHEIRENTEFAEI, _('غیر انتفاعی')),
-        (MAJAZI, _('مجازی')),
-        (KHODGARDANAZAD, _('خودگردان آزاد')),
-        (AZADTAMAMVAGHT, _('آزاد تمام وقت')),
-        (FARHANGIAN, _('فرهنگیان')),
-        (BOMI, _('بومی')),
+        (DAILY, _("روزانه")),
+        (NIGHTLY, _("نوبت دوم")),
+        (PARDIS, _("پردیس خودگردان")),
+        (SHAHRIEPARDAZ, _("شهریه پرداز")),
+        (PAYAMNOOR, _("پیام نور")),
+        (GHEIRENTEFAEI, _("غیر انتفاعی")),
+        (MAJAZI, _("مجازی")),
+        (KHODGARDANAZAD, _("خودگردان آزاد")),
+        (AZADTAMAMVAGHT, _("آزاد تمام وقت")),
+        (FARHANGIAN, _("فرهنگیان")),
+        (BOMI, _("بومی")),
     )
 
     GENDER = (
-        (0, _('دختر')),
-        (1, _('پسر')),
-        (2, _('هردو')),
+        (0, _("دختر")),
+        (1, _("پسر")),
+        (2, _("هردو")),
     )
 
-    EXAM_BASE = (
-        (True, _('با آزمون')),
-        (False, _('صرفا با سوابق تحصیلی'))
-    )
+    EXAM_BASE = ((True, _("با آزمون")), (False, _("صرفا با سوابق تحصیلی")))
 
     major_code = models.IntegerField(default=0)
     exam_based = models.BooleanField(choices=EXAM_BASE, default=True)
@@ -93,44 +90,61 @@ class BookletRow(models.Model):
     major = models.ForeignKey(Major, on_delete=models.PROTECT)
 
     def __str__(self):
-        return '{} {}'.format(self.major.title, self.university.title)
+        return "{} {}".format(self.major.title, self.university.title)
 
     class Meta:
-        verbose_name = _('BookletRow')
-        verbose_name_plural = _('BookletRows')
+        verbose_name = _("BookletRow")
+        verbose_name_plural = _("BookletRows")
 
 
 class SelectProvince(models.Model):
     index = models.PositiveSmallIntegerField()
-    province = models.ForeignKey(Province, on_delete=models.PROTECT, null=True)
+    province = models.ForeignKey(
+        Province, on_delete=models.PROTECT, null=True, blank=True
+    )
+
+    class Meta:
+        ordering = ("index",)
 
 
 class SelectProvinceForMajor(models.Model):
     index = models.PositiveSmallIntegerField()
-    # student = models.ForeignKey(Student, on_delete=models.PROTECT)
-    major = models.ForeignKey(Major, on_delete=models.PROTECT)
+    student = models.ForeignKey(
+        "users.Student", on_delete=models.PROTECT, null=True, blank=True
+    )
+    major = models.ForeignKey(Major, on_delete=models.PROTECT, null=True, blank=True)
     select_province = models.ManyToManyField(SelectProvince)
 
 
 class SelectDefaultProvince(models.Model):
     index = models.PositiveSmallIntegerField()
-    # student = models.ForeignKey(Student, on_delete=models.PROTECT)
+    student = models.ForeignKey(
+        "users.Student", on_delete=models.PROTECT, null=True, blank=True
+    )
     province = models.ForeignKey(Province, on_delete=models.PROTECT)
 
 
 class SelectDefaultMajor(models.Model):
     index = models.PositiveSmallIntegerField()
-    # student = models.ForeignKey(Student, on_delete=models.PROTECT)
+    student = models.ForeignKey(
+        "users.Student", on_delete=models.PROTECT, null=True, blank=True
+    )
     major = models.ForeignKey(Major, on_delete=models.PROTECT)
 
-# class MajorSelection(models.Model):
-#     example = models.ForeignKey(BookletRow, on_delete=models.PROTECT)
-#     student = models.ForeignKey('users.Student', on_delete=models.PROTECT)
-#     rank = models.PositiveSmallIntegerField(null=True, blank=True)
-#
-#     def __str__(self):
-#         return '{} {} {}'.format(self.student.name, self.example.major.title, self.example.university.title)
-#
-#     class Meta:
-#         verbose_name = _('major selection')
-#         verbose_name_plural = _('majors selection')
+
+class MajorSelection(models.Model):
+    booklet_row = models.ForeignKey(BookletRow, on_delete=models.PROTECT)
+    student = models.ForeignKey("users.Student", on_delete=models.PROTECT)
+    rank = models.PositiveSmallIntegerField(null=True, blank=True)
+
+    def __str__(self):
+        return "{} {} {}".format(
+            self.student.name,
+            self.booklet_row.major.title,
+            self.booklet_row.university.title,
+        )
+
+    class Meta:
+        unique_together = ("booklet_row", "student")
+        verbose_name = _("major selection")
+        verbose_name_plural = _("majors selection")

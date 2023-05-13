@@ -71,7 +71,8 @@ class Manager(User):
 
 
 class Advisor(User):
-    manager_field = models.ForeignKey(Manager, on_delete=models.PROTECT, null=True, blank=True)
+    manager_field = models.ForeignKey(
+        Manager, on_delete=models.PROTECT, null=True, blank=True)
 
     class Meta:
         verbose_name = _('advisor')
@@ -106,12 +107,20 @@ class Student(User):
     )
 
     gender = models.BooleanField(choices=GENDER, null=True)
-    national_code = models.CharField(max_length=10, null=True, blank=True, unique=True)
-    field_of_study = models.PositiveSmallIntegerField(choices=FIELD_OF_STUDY, null=True, blank=True)
+    national_code = models.CharField(
+        max_length=10, null=True, blank=True, unique=True)
+    field_of_study = models.PositiveSmallIntegerField(
+        choices=FIELD_OF_STUDY, null=True, blank=True)
     volunteer_code = models.IntegerField(null=True, blank=True)
 
-    province = models.ForeignKey(Province, on_delete=models.PROTECT, null=True, blank=True)
-    student_advisor = models.ForeignKey(Advisor, on_delete=models.PROTECT, null=True, blank=True)
+    is_state_choose_default = models.BooleanField(default=False)
+    is_state_choose_booklet_rows = models.BooleanField(default=False)
+    is_state_choose_booklet_rows_done = models.BooleanField(default=False)
+
+    province = models.ForeignKey(
+        Province, on_delete=models.PROTECT, null=True, blank=True)
+    student_advisor = models.ForeignKey(
+        Advisor, on_delete=models.PROTECT, null=True, blank=True)
 
     class Meta:
         verbose_name = _('student')
@@ -122,8 +131,10 @@ class Student(User):
 
 
 class ReportCard(models.Model):
-    report_card_file = models.FileField(upload_to='report_card_file',  null=True, blank=True)
-    student = models.ForeignKey(Student, on_delete=models.PROTECT, related_name='report_card', null=True)
+    report_card_file = models.FileField(
+        upload_to='report_card_file',  null=True, blank=True)
+    student = models.ForeignKey(
+        Student, on_delete=models.PROTECT, related_name='report_card', null=True)
 
     def __str__(self):
         return self.student.name

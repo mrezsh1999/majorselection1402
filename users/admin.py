@@ -20,13 +20,13 @@ class StudentAdmin(admin.ModelAdmin):
     search_fields = ['name', 'mobile', 'national_code']
     fieldsets = (
         (_('Personal info'),
-         {'fields': ('first_name', 'last_name', 'mobile', 'is_student', 'gender', 'national_code', 'province')}),
+         {'fields': (
+             'first_name', 'last_name', 'mobile', 'is_student', 'gender', 'national_code', 'province',
+             'volunteer_code')}),
         (_('Educational info'), {
-         'fields': ('field_of_study', 'student_advisor')}),
-        # (_('State'), {'fields': ('is_answered', 'under_investigation', 'is_confirmed', 'finalized')}),
-        # (_('State experimental/math/humanities'), {'fields': (
-        #     'is_teachers', 'is_yes_test', 'is_nightly', 'self_governing_campus', 'is_no_test', 'free_self_government',
-        #     'free_all_the_time', 'tuition_fee')}),
+            'fields': ('field_of_study', 'student_advisor')}),
+        (_('State'),
+         {'fields': ('is_state_choose_default', 'is_state_choose_booklet_rows', 'is_state_choose_booklet_rows_done')})
     )
 
 
@@ -37,7 +37,7 @@ class AdvisorAdmin(admin.ModelAdmin):
     model = User
     fieldsets = (
         (_('Personal info'), {
-         'fields': ('first_name', 'last_name', 'mobile', 'is_advisor')}),
+            'fields': ('first_name', 'last_name', 'mobile', 'is_advisor')}),
         (_('Institute info'), {'fields': ('manager_field',)})
     )
 
@@ -49,7 +49,7 @@ class ManagerAdmin(admin.ModelAdmin):
     model = User
     fieldsets = (
         (_('Personal info'), {
-         'fields': ('first_name', 'last_name', 'mobile', 'is_manager')}),
+            'fields': ('first_name', 'last_name', 'mobile', 'is_manager')}),
     )
 
 
