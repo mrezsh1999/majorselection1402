@@ -26,7 +26,7 @@ class StudentAdmin(admin.ModelAdmin):
         (_('Educational info'), {
             'fields': ('field_of_study', 'student_advisor')}),
         (_('State'),
-         {'fields': ('is_state_choose_default', 'is_state_choose_booklet_rows', 'is_state_choose_booklet_rows_done')})
+         {'fields': ('is_state_choose_default', 'is_state_choose_booklet_rows_done', 'is_state_final_approval')})
     )
 
 

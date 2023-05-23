@@ -263,19 +263,19 @@ class MajorSelectionListSerializer(serializers.ModelSerializer):
         ]
 
 
-class HumanListSerializer(serializers.ListSerializer):
-    def validate(self, data):
-        validation_set = set()
+# class HumanListSerializer(serializers.ListSerializer):
+#     def validate(self, data):
+#         validation_set = set()
 
-        for item in data:
-            if item["booklet_row"] in validation_set:
-                raise serializers.ValidationError(
-                    "!رشته [{}] تکراری است".format(item["booklet_row"])
-                )
-            else:
-                validation_set.add(item["booklet_row"])
+#         for item in data:
+#             if item["booklet_row"] in validation_set:
+#                 raise serializers.ValidationError(
+#                     "!رشته [{}] تکراری است".format(item["booklet_row"])
+#                 )
+#             else:
+#                 validation_set.add(item["booklet_row"])
 
-        return data
+#         return data
 
 
 class MajorSelectionCreateSerializer(serializers.ModelSerializer):
@@ -292,7 +292,7 @@ class MajorSelectionCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = MajorSelection
         fields = ["id", "booklet_row"]
-        list_serializer_class = HumanListSerializer
+        # list_serializer_class = HumanListSerializer
 
 
 class MajorSelectionDeleteSerializer(serializers.ModelSerializer):

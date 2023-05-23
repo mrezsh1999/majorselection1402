@@ -1,6 +1,7 @@
 import os
 
 from django.http import HttpResponse
+from django.db import transaction
 from django_filters.rest_framework import DjangoFilterBackend, Filter, FilterSet
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action
@@ -11,6 +12,7 @@ from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 from rest_framework import mixins, filters, status
 from rest_framework.permissions import IsAuthenticated
+import time
 
 from booklet_information.models import (
     BookletRow,
@@ -84,6 +86,10 @@ class InfoFilter(FilterSet):
     major_ids = ListFilter(field_name="major_id")
     university_ids = ListFilter(field_name="university_id")
     university__province_ids = ListFilter(field_name="university__province_id")
+    exam_based = ListFilter(field_name="exam_based")
+    gender = ListFilter(field_name="gender")
+    course = ListFilter(field_name="course")
+    major__field_of_study = ListFilter(field_name="major__field_of_study")
 
     class Meta:
         model = BookletRow
@@ -248,9 +254,9 @@ class InfoViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, GenericViewSet
                     )
                     all_rows += daily_nightly_list
 
-            student = Student.objects.get(id=student_id)
-            student.is_state_choose_booklet_rows = True
-            student.save()
+            # student = Student.objects.get(id=student_id)
+            # student.is_state_choose_booklet_rows = True
+            # student.save()
             sorted_list = sorted(all_rows, key=lambda x: x.course)
             serializer = BookletRowsQueryCreateSerializer(sorted_list, many=True)
             return Response(serializer.data)
@@ -323,11 +329,21 @@ class SelectProvinceForMajorViewSet(mixins.CreateModelMixin, GenericViewSet):
 
 class MajorViewSet(mixins.ListModelMixin, GenericViewSet):
     model = Major
-    queryset = Major.objects.all().order_by("title")
+    # queryset = Major.objects.all().order_by("title")
     serializer_class = MajorSerializer
     filter_backends = (DjangoFilterBackend, filters.SearchFilter)
     filterset_fields = ["field_of_study"]
     search_fields = ["title"]
+
+    def get_queryset(self):
+        if self.request.GET.get("student_id"):
+            return Major.objects.filter(
+                field_of_study=Student.objects.get(
+                    id=self.request.GET.get("student_id")
+                ).field_of_study
+            ).order_by("title")
+        else:
+            return Major.objects.all().order_by("title")
 
 
 class ProvinceViewSet(mixins.ListModelMixin, GenericViewSet):
@@ -374,17 +390,36 @@ class MajorSelectionViewSet(
             context={"student_id": request.GET.get("student_id")},
         )
         if serializer.is_valid():
-            MajorSelection.objects.filter(
-                student_id=request.GET.get("student_id")
-            ).delete()
-            self.perform_create(serializer)
-            headers = self.get_success_headers(serializer.data)
-            student = Student.objects.get(id=request.GET.get("student_id"))
-            student.is_state_choose_booklet_rows_done = True
-            student.save()
-            return Response(
-                serializer.data, status=status.HTTP_201_CREATED, headers=headers
-            )
+            with transaction.atomic():
+                # Bulk delete MajorSelection objects
+                MajorSelection.objects.filter(
+                    student_id=request.GET.get("student_id")
+                ).delete()
+
+                # Perform batch create
+                self.perform_create(serializer)
+
+                # Update student record
+                student_id = request.GET.get("student_id")
+                if request.user.is_advisor:
+                    Student.objects.filter(id=student_id).update(
+                        is_state_choose_booklet_rows_done=True
+                    )
+                elif request.user.is_manager:
+                    Student.objects.filter(id=student_id).update(
+                        is_state_final_approval=True
+                    )
+
+            # Use select_related to fetch related objects in advance
+            # queryset = self.queryset.select_related("related_model")
+
+            # # Use prefetch_related to fetch related objects in advance
+            # queryset = queryset.prefetch_related("related_objects")
+
+            # # Serialize queryset
+            # serialized_data = self.get_serializer(queryset, many=True).data
+
+            return Response("ok", status=status.HTTP_201_CREATED)
         else:
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -424,6 +459,15 @@ class MajorSelectionViewSet(
         return Response(serializer.data)
 
     @action(detail=False, methods=["GET"])
+    def reset_proccess(self, request):
+        student = Student.objects.get(id=request.GET.get("student_id"))
+        student.is_state_choose_booklet_rows_done = False
+        student.is_state_choose_default = False
+        student.save()
+        MajorSelection.objects.filter(student=student).delete()
+        return Response("deleted", status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=["GET"])
     def pdf(self, request):
         def get_farsi_text(text):
             if reshaper.has_arabic_letters(text):
@@ -444,7 +488,7 @@ class MajorSelectionViewSet(
             # return bidi_text
             # return text
 
-        class FooterCanvas(canvas.Canvas):
+        class FooterCanvasGirl(canvas.Canvas):
             def __init__(self, *args, **kwargs):
                 canvas.Canvas.__init__(self, *args, **kwargs)
                 self.pages = []
@@ -487,6 +531,70 @@ class MajorSelectionViewSet(
                     self.height - 70,
                     width=200,
                     height=50,
+                    preserveAspectRatio=True,
+                    mask="auto",
+                )
+
+                self.line(30, 720, LETTER[0] - 50, 720)
+                self.line(30, 78, LETTER[0] - 50, 78)
+                self.setFont("Times-Roman", 10)
+                self.drawString(LETTER[0] - x, 65, page)
+                self.restoreState()
+
+            def draw_canvas_second(self, page_count):
+                page = "Page %s of %s" % (self._pageNumber, page_count)
+                x = 128
+                self.saveState()
+                self.setStrokeColorRGB(0, 0, 0)
+                self.setLineWidth(0.5)
+                self.line(30, 78, LETTER[0] - 50, 78)
+                self.setFont("Times-Roman", 10)
+                self.drawString(LETTER[0] - x, 65, page)
+                self.restoreState()
+
+        class FooterCanvasBoy(canvas.Canvas):
+            def __init__(self, *args, **kwargs):
+                canvas.Canvas.__init__(self, *args, **kwargs)
+                self.pages = []
+                self.width, self.height = LETTER
+
+            def showPage(self):
+                self.pages.append(dict(self.__dict__))
+                self._startPage()
+
+            def save(self):
+                page_count = len(self.pages)
+                for page in self.pages:
+                    self.__dict__.update(page)
+                    if self._pageNumber < 2:
+                        self.draw_canvas(page_count)
+                    else:
+                        self.draw_canvas_second(page_count)
+                    canvas.Canvas.showPage(self)
+                canvas.Canvas.save(self)
+
+            def draw_canvas(self, page_count):
+                page = "Page %s of %s" % (self._pageNumber, page_count)
+                x = 128
+                self.saveState()
+                self.setStrokeColorRGB(0, 0, 0)
+                self.setLineWidth(0.5)
+                self.drawImage(
+                    os.getcwd() + "/" + "Logo.png",
+                    self.width - inch * 2.5,
+                    self.height - 70,
+                    width=200,
+                    height=50,
+                    preserveAspectRatio=True,
+                    mask="auto",
+                )
+
+                self.drawImage(
+                    os.getcwd() + "/" + "check-boy.png",
+                    self.width - inch * 9,
+                    self.height - 77,
+                    width=200,
+                    height=65,
                     preserveAspectRatio=True,
                     mask="auto",
                 )
@@ -659,6 +767,8 @@ class MajorSelectionViewSet(
 
         student_name = Student.objects.get(id=request.GET.get("student_id")).name
 
+        student_gender = Student.objects.get(id=request.GET.get("student_id")).gender
+
         student_name = (
             "نام دانش آموز: "
             + Student.objects.get(id=request.GET.get("student_id")).name
@@ -717,24 +827,43 @@ class MajorSelectionViewSet(
         os.chdir(
             r"C:/Users/Asus/Desktop/MajorFinal/majorselection1402/booklet_information/images"
         )
-        logo_url = "Logo.png"
         elements.append(table)
-        doc.multiBuild(
-            [
-                Paragraph(
-                    institue_text.replace("\n", "<br />"),
-                    stylesInstitue["Right"],
-                ),
-            ]
-            + [
-                Paragraph(
-                    student_name_text.replace("\n", "<br />"),
-                    stylesName["Right"],
-                ),
-            ]
-            + elements,
-            canvasmaker=FooterCanvas,
-        )
+
+        if student_gender:
+            doc.multiBuild(
+                [
+                    Paragraph(
+                        institue_text.replace("\n", "<br />"),
+                        stylesInstitue["Right"],
+                    ),
+                ]
+                + [
+                    Paragraph(
+                        student_name_text.replace("\n", "<br />"),
+                        stylesName["Right"],
+                    ),
+                ]
+                + elements,
+                canvasmaker=FooterCanvasBoy,
+            )
+        else:
+            doc.multiBuild(
+                [
+                    Paragraph(
+                        institue_text.replace("\n", "<br />"),
+                        stylesInstitue["Right"],
+                    ),
+                ]
+                + [
+                    Paragraph(
+                        student_name_text.replace("\n", "<br />"),
+                        stylesName["Right"],
+                    ),
+                ]
+                + elements,
+                canvasmaker=FooterCanvasGirl,
+            )
+
         # doc.build(
 
         # )
