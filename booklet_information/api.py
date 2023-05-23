@@ -197,8 +197,10 @@ class InfoViewSet(mixins.ListModelMixin,
                     province_index += 1
                     select_province = SelectProvince.objects.get_or_create(
                         index=province_index, province_id=province['province'])
-                    select_province_for_major = SelectProvinceForMajor.objects.get_or_create(
-                        index=major_index, major_id=data['major'], student_id=student_id)
+                    select_province_for_major = SelectProvinceForMajor.objects.get_or_create(major_id=data['major'],
+                                                                                             student_id=student_id,
+                                                                                             defaults={
+                                                                                                 'index': major_index})
                     select_province_for_major[0].select_province.add(
                         select_province[0])
                     daily_nightly_list = list(
@@ -346,13 +348,17 @@ class MajorSelectionViewSet(mixins.ListModelMixin,
     @action(detail=False, methods=['POST'])
     def reset_major_selection(self, request):
         student_id = request.GET.get('student_id')
+        student = Student.objects.get(id=student_id)
+        student.is_state_choose_booklet_rows = False
+        student.is_state_choose_booklet_rows_done = False
+        student.save()
         select_province_for_majors = SelectProvinceForMajor.objects.filter(student_id=student_id).order_by('index')
         booklet_rows = []
         for select_province_for_major in select_province_for_majors:
             major_id = select_province_for_major.major_id
             select_province = select_province_for_major.select_province
             for province in select_province.order_by('index'):
-                province_id = province.id
+                province_id = province.province_id
                 booklet_row = BookletRow.objects.filter(major_id=major_id, university__province_id=province_id)
                 booklet_rows += booklet_row
         serializer = MajorSelectionResetSerializer(booklet_rows, many=True, context={'student_id': student_id})

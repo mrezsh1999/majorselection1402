@@ -104,12 +104,23 @@ class SelectProvince(models.Model):
     index = models.PositiveSmallIntegerField()
     province = models.ForeignKey(Province, on_delete=models.PROTECT, null=True)
 
+    def __str__(self):
+        return '{} ({}'.format(self.province.title, self.index)
+
+    class Meta:
+        verbose_name = _('SelectProvince')
+        verbose_name_plural = _('SelectProvinces')
+
 
 class SelectProvinceForMajor(models.Model):
     index = models.PositiveSmallIntegerField()
     student = models.ForeignKey('users.Student', on_delete=models.PROTECT, null=True, blank=True)
-    major = models.ForeignKey(Major, on_delete=models.PROTECT)
+    major = models.ForeignKey(Major, on_delete=models.PROTECT, null=True, blank=True)
     select_province = models.ManyToManyField(SelectProvince)
+
+    class Meta:
+        verbose_name = _('SelectProvinceForMajor')
+        verbose_name_plural = _('SelectProvinceForMajors')
 
 
 class SelectDefaultProvince(models.Model):
@@ -117,11 +128,19 @@ class SelectDefaultProvince(models.Model):
     student = models.ForeignKey('users.Student', on_delete=models.PROTECT, null=True, blank=True)
     province = models.ForeignKey(Province, on_delete=models.PROTECT)
 
+    class Meta:
+        verbose_name = _('SelectDefaultProvince')
+        verbose_name_plural = _('SelectDefaultProvinces')
+
 
 class SelectDefaultMajor(models.Model):
     index = models.PositiveSmallIntegerField()
     student = models.ForeignKey('users.Student', on_delete=models.PROTECT, null=True, blank=True)
     major = models.ForeignKey(Major, on_delete=models.PROTECT)
+
+    class Meta:
+        verbose_name = _('SelectDefaultMajor')
+        verbose_name_plural = _('SelectDefaultMajors')
 
 
 class MajorSelection(models.Model):

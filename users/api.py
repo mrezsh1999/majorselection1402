@@ -5,7 +5,7 @@ from django.http import HttpResponse, Http404
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import mixins, status
 from rest_framework.decorators import action
-from rest_framework.permissions import BasePermission, IsAuthenticated
+from rest_framework.permissions import BasePermission, IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
@@ -60,7 +60,7 @@ class UserViewSet(mixins.ListModelMixin,
         elif self.request.user.is_manager:
             return Student.objects.filter(student_advisor__manager_field=self.request.user)
 
-    @action(detail=False, methods=['POST'])
+    @action(detail=False, methods=['POST'], permission_classes=[AllowAny])
     def login(self, request):
         mobile = request.data.get('mobile')
         try:
@@ -74,10 +74,10 @@ class UserViewSet(mixins.ListModelMixin,
             return Response({'message': 'There is no user with this phone number'},
                             status=status.HTTP_404_NOT_FOUND)
 
-    @action(detail=False, methods=['POST'])
+    @action(detail=False, methods=['POST'], permission_classes=[AllowAny])
     def verify(self, request):
         mobile = request.data.get('mobile')
-        if User.objects.filter(mobile=mobile, is_student=True):
+        if User.objects.filter(mobile=mobile, is_student=True, ):
             if UserViewSet.OTP.verify(request.data['otp']):
                 student = Student.objects.get(mobile=mobile)
                 serializer = StudentLoginSerializer(student)
@@ -104,7 +104,7 @@ class UserViewSet(mixins.ListModelMixin,
         else:
             return Response('user does not exist', status=status.HTTP_404_NOT_FOUND)
 
-    @action(detail=False, methods=['POST'], permission_classes=[IsAuthenticated])
+    @action(detail=False, methods=['POST'])
     def logout(self, request):
         token = request.auth
         token.delete()

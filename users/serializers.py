@@ -25,7 +25,6 @@ class StudentLoginSerializer(serializers.ModelSerializer):
     def get_user_type(self, obj):
         return 'student'
 
-
     class Meta:
         model = Student
         fields = ['id', 'name', 'gender', 'national_code',
