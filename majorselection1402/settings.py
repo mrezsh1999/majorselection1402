@@ -90,6 +90,17 @@ DATABASES = {
     }
 }
 
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql_psycopg2',
+#         'NAME': 'majorselection1402',
+#         'USER': 'mrezash',
+#         'PASSWORD': 'mrezash1999',
+#         'HOST': 'localhost',   # Or an IP Address that your DB is hosted on
+#         'PORT': '',
+#     }
+# }
+
 
 # Password validation
 # https://docs.djangoproject.com/en/4.1/ref/settings/#auth-password-validators
@@ -137,7 +148,8 @@ MEDIA_URL = "/media/"
 
 AUTH_USER_MODEL = "users.User"
 
-Kavenegar_API = "6E4B34694F4B6E386170375444585561514A67494A6A4A656D37754D6E7336486B7A5468654145467633593D"
+Kavenegar_API = "32336E634C41514F75576E645A68472F6C72343731325848345030496131324D5470732B42424E32596C773D"
+
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.1/ref/settings/#default-auto-field

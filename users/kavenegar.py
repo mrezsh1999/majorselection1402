@@ -8,13 +8,17 @@ def send_otp(mobile, otp):
     try:
         api = KavenegarAPI(Kavenegar_API)
         params = {
-            'sender': '10008663',
+            # 'sender': '1000080008880',
             'receptor': mobile,
-            'message': 'Your otp is {}'.format(otp),
+            'template': 'verify1',
+            # 'message': 'میزترید \n کد تایید شماره تلفن شما: \n {}'.format(otp),
+            'token': otp,
+            'type': 'sms'
         }
-        response = api.sms_send(params)
-        print('OTP: ', otp)
+        response = api.verify_lookup(params)
         print(response)
+        # print('OTP: ', otp)
+        # print(response)
     except APIException as e:
         print(e)
     except HTTPException as e:

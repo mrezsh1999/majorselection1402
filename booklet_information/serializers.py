@@ -24,6 +24,7 @@ class InfoSerializer(serializers.ModelSerializer):
     gender = serializers.SerializerMethodField("get_gender")
     province = serializers.SerializerMethodField("get_province")
     field_of_study = serializers.SerializerMethodField("get_field_of_study")
+    admission = serializers.SerializerMethodField("get_admission")
 
     def get_university(self, obj):
         return obj.university.title
@@ -45,6 +46,9 @@ class InfoSerializer(serializers.ModelSerializer):
 
     def get_field_of_study(self, obj):
         return obj.major.get_field_of_study_display()
+    
+    def get_admission(self, obj):
+        return obj.get_admission_display()
 
     class Meta:
         model = BookletRow
@@ -59,6 +63,7 @@ class InfoSerializer(serializers.ModelSerializer):
             "exam_based",
             "gender",
             "field_of_study",
+            "admission",
         ]
 
 
@@ -140,6 +145,8 @@ class BookletRowsQueryCreateSerializer(serializers.ModelSerializer):
     exam_based = serializers.SerializerMethodField("get_exam_based")
     gender = serializers.SerializerMethodField("get_gender")
     field_of_study = serializers.SerializerMethodField("get_field_of_study")
+    admission = serializers.SerializerMethodField("get_admission")
+
 
     def get_province(self, obj):
         return obj.university.province.title
@@ -158,6 +165,9 @@ class BookletRowsQueryCreateSerializer(serializers.ModelSerializer):
 
     def get_field_of_study(self, obj):
         return obj.major.get_field_of_study_display()
+    
+    def get_admission(self, obj):
+        return obj.get_admission_display()
 
     class Meta:
         model = BookletRow
@@ -172,6 +182,7 @@ class BookletRowsQueryCreateSerializer(serializers.ModelSerializer):
             "exam_based",
             "gender",
             "field_of_study",
+            "admission",
         ]
 
 
@@ -212,6 +223,7 @@ class MajorSelectionListSerializer(serializers.ModelSerializer):
     exam_based = serializers.SerializerMethodField("get_exam_based")
     gender = serializers.SerializerMethodField("get_gender")
     field_of_study = serializers.SerializerMethodField("get_field_of_study")
+    admission = serializers.SerializerMethodField("get_admission")
     major = serializers.SerializerMethodField("get_major")
     major_code = serializers.SerializerMethodField("get_major_code")
     id = serializers.SerializerMethodField("get_id")
@@ -242,6 +254,9 @@ class MajorSelectionListSerializer(serializers.ModelSerializer):
 
     def get_field_of_study(self, obj):
         return obj.booklet_row.major.get_field_of_study_display()
+    
+    def get_admission(self, obj):
+        return obj.booklet_row.get_admission_display()
 
     def get_id(self, obj):
         return obj.booklet_row.id
@@ -260,6 +275,7 @@ class MajorSelectionListSerializer(serializers.ModelSerializer):
             "exam_based",
             "gender",
             "field_of_study",
+            "admission",
         ]
 
 
@@ -309,6 +325,7 @@ class MajorSelectionResetSerializer(serializers.ModelSerializer):
     exam_based = serializers.SerializerMethodField("get_exam_based")
     gender = serializers.SerializerMethodField("get_gender")
     field_of_study = serializers.SerializerMethodField("get_field_of_study")
+    admission = serializers.SerializerMethodField("get_admission")
     rank = serializers.SerializerMethodField("get_rank")
 
     def get_province(self, obj):
@@ -328,6 +345,9 @@ class MajorSelectionResetSerializer(serializers.ModelSerializer):
 
     def get_field_of_study(self, obj):
         return obj.major.get_field_of_study_display()
+
+    def get_admission(self, obj):
+        return obj.get_admission_display()
 
     def get_rank(self, obj):
         if (obj.id,) in MajorSelection.objects.filter(
@@ -350,5 +370,6 @@ class MajorSelectionResetSerializer(serializers.ModelSerializer):
             "exam_based",
             "gender",
             "field_of_study",
+            "admission",
             "rank",
         ]

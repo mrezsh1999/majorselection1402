@@ -20,6 +20,9 @@ class Major(models.Model):
         (2, _("انسانی")),
         (3, _("هنر")),
         (4, _("زبان")),
+        (5, _("ریاضی 1")),
+        (6, _("ریاضی و فیزیک")),
+        (7, _("ریاضی جدید")),
     )
 
     title = models.CharField(max_length=512)
@@ -79,12 +82,18 @@ class BookletRow(models.Model):
         (2, _("هردو")),
     )
 
+    ADMISSION = (
+        (0, _("اول")),
+        (1, _("دوم")),
+    )
+
     EXAM_BASE = ((True, _("با آزمون")), (False, _("صرفا با سوابق تحصیلی")))
 
     major_code = models.IntegerField(default=0)
     exam_based = models.BooleanField(choices=EXAM_BASE, default=True)
     course = models.PositiveSmallIntegerField(choices=COURSE, default=0)
     gender = models.PositiveSmallIntegerField(choices=GENDER, default=0)
+    admission = models.PositiveSmallIntegerField(choices=ADMISSION, default=0)
 
     university = models.ForeignKey(University, on_delete=models.PROTECT)
     major = models.ForeignKey(Major, on_delete=models.PROTECT)

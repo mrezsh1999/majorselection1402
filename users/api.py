@@ -9,7 +9,7 @@ from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 from rest_framework.permissions import AllowAny
-
+from .kavenegar import send_otp
 
 from majorselection1402 import settings
 from users.models import Student, User, Advisor, ReportCard, Manager
@@ -17,6 +17,8 @@ from users.serializers import (
     StudentLoginSerializer,
     AdvisorLoginSerializer,
     StudentListSerializer,
+    StudentListSerializerAdvisor,
+    StudentListSerializerManager,
     StudentRetrieveListSerializer,
     ReportCardSerializer,
 )
@@ -52,7 +54,10 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewS
         if self.action == "retrieve":
             return StudentRetrieveListSerializer
         else:
-            return StudentListSerializer
+            if self.request.user.is_advisor:
+                return StudentListSerializerAdvisor
+            elif self.request.user.is_manager:
+                return StudentListSerializerManager
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -61,11 +66,11 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewS
 
     def get_queryset(self):
         if self.request.user.is_advisor:
-            return Student.objects.filter(student_advisor=self.request.user)
+            return Student.objects.filter(student_advisor=self.request.user).order_by("field_of_study", "last_name")
         elif self.request.user.is_manager:
             return Student.objects.filter(
                 student_advisor__manager_field=self.request.user
-            )
+            ).order_by("student_advisor__last_name", "field_of_study", "last_name")
 
     @action(detail=False, methods=["POST"], permission_classes=[AllowAny])
     def login(self, request):
@@ -73,10 +78,13 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewS
         try:
             user = User.objects.get(mobile=mobile)
             otp_key = pyotp.random_base32()
-            UserViewSet.OTP = pyotp.TOTP(otp_key, interval=120, digits=4)
-            # kavenegar.send_otp(mobile, UserViewSet.OTP.now())
+            OTP = pyotp.TOTP(otp_key, interval=120, digits=4)
+            user.otp_key = otp_key
+            user.save()
+            # UserViewSet.OTP = pyotp.TOTP(otp_key, interval=120, digits=4)
+            # send_otp(mobile, OTP.now())
             return Response(
-                {"message": "OTP was sent", "otp": UserViewSet.OTP.now()},
+                {"message": "OTP was sent", "otp": OTP.now()},
                 status=status.HTTP_200_OK,
             )
 
@@ -90,7 +98,9 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewS
     def verify(self, request):
         mobile = request.data.get("mobile")
         if User.objects.filter(mobile=mobile, is_student=True):
-            if UserViewSet.OTP.verify(request.data["otp"]):
+            otp_key = User.objects.get(mobile=mobile).otp_key
+            OTP = pyotp.TOTP(otp_key, interval=120, digits=4)
+            if OTP.verify(request.data["otp"]):
                 student = Student.objects.get(mobile=mobile)
                 serializer = StudentLoginSerializer(student)
                 return Response(serializer.data, status=status.HTTP_200_OK)
@@ -101,7 +111,9 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewS
                 )
 
         elif User.objects.filter(mobile=mobile, is_advisor=True):
-            if UserViewSet.OTP.verify(request.data["otp"]):
+            otp_key = User.objects.get(mobile=mobile).otp_key
+            OTP = pyotp.TOTP(otp_key, interval=120, digits=4)
+            if OTP.verify(request.data["otp"]):
                 advisor = Advisor.objects.get(mobile=mobile)
                 serializer = AdvisorLoginSerializer(advisor)
                 return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -111,7 +123,9 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewS
                 )
 
         elif User.objects.filter(mobile=mobile, is_manager=True):
-            if UserViewSet.OTP.verify(request.data["otp"]):
+            otp_key = User.objects.get(mobile=mobile).otp_key
+            OTP = pyotp.TOTP(otp_key, interval=120, digits=4)
+            if OTP.verify(request.data["otp"]):
                 manager = Manager.objects.get(mobile=mobile)
                 serializer = AdvisorLoginSerializer(manager)
                 return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -130,6 +144,14 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewS
             {"status": "No Connect", "message": "Successfully logout."},
             status=status.HTTP_204_NO_CONTENT,
         )
+    # @action(detail=False, methods=["GET"], permission_classes=[AllowAny])
+    # def delete_all(self, request):
+    #     Student.objects.all().delete()
+    #     Advisor.objects.all().delete()
+    #     return Response(
+    #         {"status": "No Connect", "message": "Successfully logout."},
+    #         status=status.HTTP_204_NO_CONTENT,
+    #     )
 
     @action(detail=False, methods=["GET"])
     def pdf(self, request):

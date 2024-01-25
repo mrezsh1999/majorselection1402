@@ -93,6 +93,95 @@ class StudentListSerializer(serializers.ModelSerializer):
             "is_state_final_approval",
         ]
 
+class StudentListSerializerAdvisor(serializers.ModelSerializer):
+    field_of_study = serializers.SerializerMethodField("get_field_of_study")
+    province = serializers.SlugRelatedField(slug_field="title", read_only=True)
+    gender = serializers.SerializerMethodField("get_gender")
+    is_state_report_card = serializers.SerializerMethodField("get_is_state_report_card")
+    is_state_choose_booklet_rows_done = serializers.SerializerMethodField("get_is_state_choose_booklet_rows_done")
+    is_state_final_approval = serializers.SerializerMethodField("get_is_state_final_approval")
+
+    def get_is_state_choose_booklet_rows_done(self, obj):
+        return "انجام شده" if obj.is_state_choose_booklet_rows_done else "انجام نشده"
+
+    def get_is_state_final_approval(self, obj):
+        return "تایید شده" if obj.is_state_final_approval else "تایید نشده"
+    
+    def get_is_state_report_card(self, obj):
+        try:
+            ReportCard.objects.get(student=obj)
+            return "وجود دارد"
+        except ReportCard.DoesNotExist:
+            return "وجود ندارد"
+
+    def get_field_of_study(self, obj):
+        return obj.get_field_of_study_display()
+
+    def get_gender(self, obj):
+        return obj.get_gender_display()
+
+    class Meta:
+        model = Student
+        fields = [
+            "id",
+            "name",
+            "mobile",
+            "national_code",
+            "field_of_study",
+            "province",
+            "gender",
+            "is_state_report_card",
+            "is_state_choose_booklet_rows_done",
+            "is_state_final_approval",
+        ]
+
+class StudentListSerializerManager(serializers.ModelSerializer):
+    field_of_study = serializers.SerializerMethodField("get_field_of_study")
+    province = serializers.SlugRelatedField(slug_field="title", read_only=True)
+    gender = serializers.SerializerMethodField("get_gender")
+    is_state_report_card = serializers.SerializerMethodField("get_is_state_report_card")
+    is_state_choose_booklet_rows_done = serializers.SerializerMethodField("get_is_state_choose_booklet_rows_done")
+    is_state_final_approval = serializers.SerializerMethodField("get_is_state_final_approval")
+    advisor_name = serializers.SerializerMethodField("get_advisor_name")
+
+    def get_is_state_choose_booklet_rows_done(self, obj):
+        return "انجام شده" if obj.is_state_choose_booklet_rows_done else "انجام نشده"
+
+    def get_is_state_final_approval(self, obj):
+        return "تایید شده" if obj.is_state_final_approval else "تایید نشده"
+    
+    def get_is_state_report_card(self, obj):
+        try:
+            ReportCard.objects.get(student=obj)
+            return "وجود دارد"
+        except ReportCard.DoesNotExist:
+            return "وجود ندارد"
+
+    def get_field_of_study(self, obj):
+        return obj.get_field_of_study_display()
+
+    def get_gender(self, obj):
+        return obj.get_gender_display()
+
+    def get_advisor_name(self, obj):
+        return obj.student_advisor.name
+
+    class Meta:
+        model = Student
+        fields = [
+            "id",
+            "name",
+            "mobile",
+            "national_code",
+            "field_of_study",
+            "province",
+            "gender",
+            "is_state_report_card",
+            "is_state_choose_booklet_rows_done",
+            "is_state_final_approval",
+            "advisor_name"
+        ]
+
 
 class StudentRetrieveListSerializer(serializers.ModelSerializer):
     gender = serializers.ChoiceField(choices=Student.GENDER)

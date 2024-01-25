@@ -112,7 +112,6 @@ class StandardResultsSetPagination(PageNumberPagination):
 
 class InfoViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, GenericViewSet):
     model = BookletRow
-    queryset = BookletRow.objects.all()
     serializer_class = InfoSerializer
     pagination_class = StandardResultsSetPagination
     filter_backends = (DjangoFilterBackend, filters.SearchFilter)
@@ -124,6 +123,16 @@ class InfoViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, GenericViewSet
         "university__province__title",
     ]
 
+    def get_queryset(self):
+        if(self.request.GET.get("student_id") != "undefined"):
+            student_gender = Student.objects.get(id=self.request.GET.get("student_id")).gender 
+            genders = [1, 2] if student_gender else [0, 2]
+            return BookletRow.objects.filter(major__field_of_study=Student.objects.get(id=self.request.GET.get("student_id")).field_of_study, gender__in=genders)
+        else:
+            return BookletRow.objects.all()
+
+
+
     def create(self, request, *args, **kwargs):
         list10 = []
         excel_file = request.data.get("file")
@@ -133,24 +142,30 @@ class InfoViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, GenericViewSet
 
         for row in rows:
             y = x = q = g = None
-            province = row[0]
-            university = row[1]
+            province = row[7]
+            university = row[6]
             major = row[2]
             code = row[3]
             course = row[4]
             exam_based = row[5]
             try:
-                gender = row[6]
+                gender = row[0]
+                if gender == "مرد":
+                    g = 1
+                elif gender == "زن":
+                    g = 0
+                else:
+                    g = 2
             except:
-                pass
-            # rank = row[7]
-
-            if gender == " " or gender == "" or gender == None:
                 g = 2
-            elif gender == 1:
-                g = 1
-            elif gender == 2:
-                g = 0
+            admission = row[1]
+
+            # if gender == " " or gender == "" or gender == None:
+            #     g = 2
+            # elif gender == 1:
+            #     g = 1
+            # elif gender == 2:
+            #     g = 0
 
             if exam_based == "با آزمون":
                 exam_based = True
@@ -190,10 +205,16 @@ class InfoViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, GenericViewSet
             elif course == "بومی":
                 q = 10
 
-            if Major.objects.filter(title=major, field_of_study=0):
-                y = Major.objects.get(title=major, field_of_study=0)
+            if admission == "اول":
+                admission = 0
+
+            elif admission == "دوم":
+                admission = 1
+
+            if Major.objects.filter(title=major, field_of_study=2):
+                y = Major.objects.get(title=major, field_of_study=2)
             else:
-                y = Major.objects.create(title=major, field_of_study=0)
+                y = Major.objects.create(title=major, field_of_study=2)
 
             if University.objects.filter(title=university):
                 x = University.objects.filter(title=university).first()
@@ -215,17 +236,22 @@ class InfoViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, GenericViewSet
                 gender=g,
                 major=y,
                 major_code=code,
+                admission=admission,
             )
         return Response("ok")
 
     @action(detail=False, methods=["DELETE"])
     def delete(self, request):
         BookletRow.objects.all().delete()
+        University.objects.all().delete()
+        Major.objects.all().delete()
         return Response("ok")
 
     @action(detail=False, methods=["POST", "GET"])
     def booklet_rows_query(self, request):
         student_id = request.GET.get("student_id")
+        student_gender = Student.objects.get(id=student_id).gender 
+        genders = [1, 2] if student_gender else [0, 2]
         if request.method == "POST":
             all_rows = []
             major_index = 0
@@ -233,38 +259,63 @@ class InfoViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, GenericViewSet
             for data in request.data:
                 major_index += 1
                 province_index = 0
-                for province in data["select_province"]:
-                    province_index += 1
-                    select_province = SelectProvince.objects.get_or_create(
-                        index=province_index, province_id=province["province"]
-                    )
-                    select_province_for_major = (
-                        SelectProvinceForMajor.objects.get_or_create(
-                            major_id=data["major"],
-                            student_id=student_id,
-                            defaults={"index": major_index},
+                if(data["major"] != 1000):
+                    for province in data["select_province"]:
+                        province_index += 1
+                        select_province = SelectProvince.objects.get_or_create(
+                            index=province_index, province_id=province["province"]
                         )
-                    )
-                    select_province_for_major[0].select_province.add(select_province[0])
-                    daily_nightly_list = list(
-                        BookletRow.objects.filter(
-                            major_id=data["major"],
-                            university__province_id=province["province"],
+                        select_province_for_major = (
+                            SelectProvinceForMajor.objects.get_or_create(
+                                major_id=data["major"],
+                                student_id=student_id,
+                                defaults={"index": major_index},
+                            )
                         )
-                    )
-                    all_rows += daily_nightly_list
+                        select_province_for_major[0].select_province.add(select_province[0])
+                        daily_nightly_list = list(
+                            BookletRow.objects.filter(
+                                major_id=data["major"],
+                                university__province_id=province["province"],
+                                gender__in=genders
+                            ).order_by("university__rank")
+                        )
+                        all_rows += daily_nightly_list
+                else:
+                    provinces = Province.objects.all()
+                    for province in provinces:
+                        province_index += 1
+                        select_province = SelectProvince.objects.get_or_create(
+                            index=province_index, province_id=province.id
+                        )
+                        select_province_for_major = (
+                            SelectProvinceForMajor.objects.get_or_create(
+                                major_id=data["major"],
+                                student_id=student_id,
+                                defaults={"index": major_index},
+                            )
+                        )
+                        select_province_for_major[0].select_province.add(select_province[0])
+                        daily_nightly_list = list(
+                            BookletRow.objects.filter(
+                                major_id=data["major"],
+                                university__province_id=province.id,
+                                gender__in=genders
+                            ).order_by("university__rank")
+                        )
+                        all_rows += daily_nightly_list  
 
             # student = Student.objects.get(id=student_id)
             # student.is_state_choose_booklet_rows = True
             # student.save()
             sorted_list = sorted(all_rows, key=lambda x: x.course)
             serializer = BookletRowsQueryCreateSerializer(sorted_list, many=True)
-            return Response(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
 
         elif request.method == "GET":
             all_rows = SelectProvinceForMajor.objects.filter(student_id=student_id)
             serializer = BookletRowsQueryListSerializer(all_rows, many=True)
-            return Response(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class SelectDefaultProvinceViewSet(mixins.ListModelMixin, GenericViewSet):
@@ -274,7 +325,7 @@ class SelectDefaultProvinceViewSet(mixins.ListModelMixin, GenericViewSet):
 
     def get_queryset(self):
         student_id = self.request.GET.get("student_id")
-        return SelectDefaultProvince.objects.filter(student_id=student_id)
+        return SelectDefaultProvince.objects.filter(student_id=student_id).order_by('index')
 
 
 class SelectProvinceForMajorViewSet(mixins.CreateModelMixin, GenericViewSet):
@@ -299,18 +350,32 @@ class SelectProvinceForMajorViewSet(mixins.CreateModelMixin, GenericViewSet):
                 )
                 x = major
                 select_province = []
-                for province in request.data[1]:
-                    province_index += 1
-                    SelectDefaultProvince.objects.get_or_create(
-                        index=province_index,
-                        province_id=province["province"],
-                        student_id=student_id,
-                    )
-                    select_province.append(province)
-                    if province_index == len(request.data[1]):
-                        x["select_province"] = select_province
-                        x["student"] = student_id
-                        final_list.append(x)
+                if(major["major"] != 1000):
+                    for province in request.data[1]:
+                        province_index += 1
+                        SelectDefaultProvince.objects.get_or_create(
+                            index=province_index,
+                            province_id=province["province"],
+                            student_id=student_id,
+                        )
+                        select_province.append(province)
+                        if province_index == len(request.data[1]):
+                            x["select_province"] = select_province
+                            x["student"] = student_id
+                            final_list.append(x)
+                else:
+                    for province in Province.objects.all():
+                        province_index += 1
+                        SelectDefaultProvince.objects.get_or_create(
+                            index=province_index,
+                            province_id=province.id,
+                            student_id=student_id,
+                        )
+                        select_province.append({'province':province.id})
+                        if province_index == len(request.data[1]):
+                            x["select_province"] = select_province
+                            x["student"] = student_id
+                            final_list.append(x)
 
             SelectProvinceForMajor.objects.filter(student_id=student_id).delete()
             counter = 0
@@ -356,7 +421,7 @@ class ProvinceViewSet(mixins.ListModelMixin, GenericViewSet):
 class UniversityViewSet(mixins.ListModelMixin, GenericViewSet):
     model = University
     queryset = University.objects.all()
-    permission_class = [IsAuthenticated]
+    # permission_class = [IsAuthenticated]
     serializer_class = UniversityListSerializer
     filter_backends = (DjangoFilterBackend, filters.SearchFilter)
     # filterset_fields = ['province', 'example__major__field_of_study']
@@ -439,6 +504,8 @@ class MajorSelectionViewSet(
     @action(detail=False, methods=["GET"])
     def reset_major_selection(self, request):
         student_id = request.GET.get("student_id")
+        student_gender = Student.objects.get(id=student_id).gender 
+        genders = [1, 2] if student_gender else [0, 2]
         select_province_for_majors = SelectProvinceForMajor.objects.filter(
             student_id=student_id
         ).order_by("index")
@@ -449,10 +516,10 @@ class MajorSelectionViewSet(
             for province in select_province.order_by("index"):
                 province_id = province.province.id
                 booklet_row = BookletRow.objects.filter(
-                    major_id=major_id, university__province_id=province_id
-                )
+                    major_id=major_id, university__province_id=province_id, gender__in=genders
+                ).order_by("university__rank")
                 booklet_rows += booklet_row
-        sorted_list = sorted(booklet_rows, key=lambda x: x.course)
+        sorted_list = sorted(booklet_rows, key=lambda x: (x.course))
         serializer = MajorSelectionResetSerializer(
             sorted_list, many=True, context={"student_id": student_id}
         )
@@ -489,6 +556,8 @@ class MajorSelectionViewSet(
             # return text
 
         class FooterCanvasGirl(canvas.Canvas):
+            os.chdir("/home/mrezash/majorselection1402/booklet_information/images")
+
             def __init__(self, *args, **kwargs):
                 canvas.Canvas.__init__(self, *args, **kwargs)
                 self.pages = []
@@ -516,7 +585,7 @@ class MajorSelectionViewSet(
                 self.setStrokeColorRGB(0, 0, 0)
                 self.setLineWidth(0.5)
                 self.drawImage(
-                    os.getcwd() + "/" + "Logo.png",
+                    "/home/mrezash/majorselection1402/booklet_information/images/Logo.png",
                     self.width - inch * 2.5,
                     self.height - 70,
                     width=200,
@@ -526,7 +595,7 @@ class MajorSelectionViewSet(
                 )
 
                 self.drawImage(
-                    os.getcwd() + "/" + "check.png",
+                    "/home/mrezash/majorselection1402/booklet_information/images/check.png",
                     self.width - inch * 9,
                     self.height - 70,
                     width=200,
@@ -580,7 +649,7 @@ class MajorSelectionViewSet(
                 self.setStrokeColorRGB(0, 0, 0)
                 self.setLineWidth(0.5)
                 self.drawImage(
-                    os.getcwd() + "/" + "Logo.png",
+                    "/home/mrezash/majorselection1402/booklet_information/images/Logo.png",
                     self.width - inch * 2.5,
                     self.height - 70,
                     width=200,
@@ -590,7 +659,7 @@ class MajorSelectionViewSet(
                 )
 
                 self.drawImage(
-                    os.getcwd() + "/" + "check-boy.png",
+                    "/home/mrezash/majorselection1402/booklet_information/images/check-boy.png",
                     self.width - inch * 9,
                     self.height - 77,
                     width=200,
@@ -617,9 +686,10 @@ class MajorSelectionViewSet(
                 self.restoreState()
 
         global response
-        os.chdir(
-            r"C:/Users/Asus/Desktop/MajorFinal/majorselection1402/booklet_information/persian"
-        )
+        # os.chdir(
+        #     r"C:/Users/Asus/Desktop/MajorFinal/majorselection1402/booklet_information/persian"
+        # )
+        os.chdir("/home/mrezash/majorselection1402/booklet_information/persian")
         pdfmetrics.registerFont(TTFont("Persian", "Bahij-Nazanin-Regular.ttf"))
 
         styles = getSampleStyleSheet()
@@ -694,6 +764,8 @@ class MajorSelectionViewSet(
             .values_list(
                 "booklet_row__major_code",
                 "booklet_row__university__province__title",
+                "booklet_row__gender",
+                "booklet_row__admission",
                 "booklet_row__exam_based",
                 "booklet_row__course",
                 "booklet_row__university__title",
@@ -703,7 +775,7 @@ class MajorSelectionViewSet(
         q = 1
         for major_selection in major_selections:
             x = list(major_selection)
-            x.insert(6, q)
+            x.insert(8, q)
             q += 1
             data.append(x)
 
@@ -716,7 +788,9 @@ class MajorSelectionViewSet(
         list_column_head = [
             p,
             "نام استان",
-            "نحوه پذیرش",
+            "جنسیت",
+            "نیمسال",
+            "پذیرش",
             "دوره تحصیلی",
             "نام دانشگاه",
             "عنوان رشته",
@@ -724,8 +798,8 @@ class MajorSelectionViewSet(
         ]
         data.insert(0, list_column_head)
         for i in range(len(data)):
-            for j in range(1, 6):
-                if j == 3:
+            for j in range(1, 8):
+                if j == 5:
                     if data[i][j] == 0:
                         data[i][j] = "روزانه"
                     elif data[i][j] == 1:
@@ -750,7 +824,21 @@ class MajorSelectionViewSet(
                         data[i][j] = "بومی"
 
                 elif j == 2:
-                    if data[i][j]:
+                    if data[i][j] == 0:
+                        data[i][j] = "دختر"
+                    elif data[i][j] == 1:
+                        data[i][j] = "پسر"
+                    elif data[i][j] == 2:
+                        data[i][j] = "هردو"
+                
+                elif j == 3:
+                    if data[i][j] == 0:
+                        data[i][j] = "اول"
+                    elif data[i][j] == 1:
+                        data[i][j] = "دوم"
+
+                elif j == 4:
+                    if data[i][j] and data[i][j] != "پذیرش":
                         data[i][j] = "با آزمون"
                     elif not data[i][j]:
                         data[i][j] = "بدون آزمون"
@@ -784,7 +872,7 @@ class MajorSelectionViewSet(
             response,
             title=Student.objects.get(id=request.GET.get("student_id")).name,
         )
-        table = Table(data, colWidths=[50, 85, 60, 80, 150, 120, 20])
+        table = Table(data, colWidths=[40, 80, 38, 38, 55, 70, 130, 110, 25])
 
         table_style = [
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#6336F0")),
@@ -824,9 +912,9 @@ class MajorSelectionViewSet(
 
         table.setStyle(table_style)
 
-        os.chdir(
-            r"C:/Users/Asus/Desktop/MajorFinal/majorselection1402/booklet_information/images"
-        )
+        # os.chdir(
+        #     r"C:/Users/Asus/Desktop/MajorFinal/majorselection1402/booklet_information/images"
+        # )
         elements.append(table)
 
         if student_gender:

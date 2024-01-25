@@ -31,10 +31,10 @@ class NewUserManager(BaseUserManager):
 class User(AbstractUser):
     username = None
     email = None
-    first_name = models.CharField(_("first name"), max_length=150, blank=True)
+    first_name = models.CharField(_("first name"), max_length=150, null=True, blank=True)
     last_name = models.CharField(_("last name"), max_length=150, blank=True)
     mobile = models.CharField(_("mobile"), max_length=11, unique=True)
-    # otp_key = models.CharField(_('otp_key'), max_length=64, null=True, blank=True)
+    otp_key = models.CharField(_('otp_key'), max_length=64, null=True, blank=True)
 
     is_student = models.BooleanField(default=False)
     is_advisor = models.BooleanField(default=False)
@@ -102,6 +102,9 @@ class Student(User):
         (2, _("انسانی")),
         (3, _("هنر")),
         (4, _("زبان")),
+        (5, _("ریاضی 1")),
+        (6, _("ریاضی و فیزیک")),
+        (7, _("ریاضی جدید")),
     )
     GENDER = ((True, _("مرد")), (False, _("زن")))
 
