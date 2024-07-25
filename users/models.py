@@ -83,16 +83,16 @@ class Advisor(User):
         return self.name
 
 
-# class School(models.Model):
-#     title = models.CharField(max_length=64)
-#     advisor = models.ManyToManyField(Advisor)
-#
-#     class Meta:
-#         verbose_name = _('school')
-#         verbose_name_plural = _('schools')
-#
-#     def __str__(self):
-#         return self.title
+class School(models.Model):
+    title = models.CharField(max_length=64)
+    manager = models.ForeignKey(Manager, on_delete=models.SET_NULL, null=True, blank=True)
+
+    class Meta:
+        verbose_name = _('school')
+        verbose_name_plural = _('schools')
+
+    def __str__(self):
+        return self.title
 
 
 class Student(User):
@@ -125,6 +125,10 @@ class Student(User):
     student_advisor = models.ForeignKey(
         Advisor, on_delete=models.PROTECT, null=True, blank=True
     )
+
+    process_start_time = models.DateTimeField(null=True, blank=True)
+    process_end_time = models.DateTimeField(null=True, blank=True)
+    school = models.ForeignKey(School, on_delete=models.PROTECT, null=True, blank=True)
 
     class Meta:
         verbose_name = _("student")

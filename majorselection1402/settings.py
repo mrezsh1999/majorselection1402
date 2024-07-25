@@ -148,7 +148,7 @@ MEDIA_URL = "/media/"
 
 AUTH_USER_MODEL = "users.User"
 
-Kavenegar_API = "32336E634C41514F75576E645A68472F6C72343731325848345030496131324D5470732B42424E32596C773D"
+Kavenegar_API = "4E564C4B744935794B68664D61357349564F654563552B677249456854732B324B746B726442444B7849493D"
 
 
 # Default primary key field type
@@ -160,7 +160,7 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework.authentication.TokenAuthentication",
         "rest_framework.authentication.BasicAuthentication",
-        "rest_framework.authentication.SessionAuthentication",
+        # "rest_framework.authentication.SessionAuthentication",
     ),
     # 'DEFAULT_PERMISSION_CLASSES': [
     #     'rest_framework.permissions.IsAuthenticated',

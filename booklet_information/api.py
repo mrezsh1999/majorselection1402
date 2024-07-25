@@ -13,6 +13,8 @@ from rest_framework.viewsets import GenericViewSet
 from rest_framework import mixins, filters, status
 from rest_framework.permissions import IsAuthenticated
 import time
+from django.utils import timezone
+from django.db.models import Case, When, Value, BooleanField
 
 from booklet_information.models import (
     BookletRow,
@@ -23,7 +25,7 @@ from booklet_information.models import (
     Province,
     University,
     SelectProvince,
-    MajorSelection,
+    MajorSelection,z
 )
 from booklet_information.serializers import (
     InfoSerializer,
@@ -468,11 +470,16 @@ class MajorSelectionViewSet(
                 student_id = request.GET.get("student_id")
                 if request.user.is_advisor:
                     Student.objects.filter(id=student_id).update(
-                        is_state_choose_booklet_rows_done=True
+                        is_state_choose_booklet_rows_done=True,
+                        process_end_time = timezone.now()
                     )
                 elif request.user.is_manager:
                     Student.objects.filter(id=student_id).update(
-                        is_state_final_approval=True
+                        is_state_final_approval=Case(
+                            When(is_state_final_approval=True, then=Value(False)),
+                            When(is_state_final_approval=False, then=Value(True)),
+                            output_field=BooleanField()
+                        )
                     )
 
             # Use select_related to fetch related objects in advance
@@ -500,7 +507,23 @@ class MajorSelectionViewSet(
             serializer.is_valid(raise_exception=True)
             serializer.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
+    
+    @action(detail=False, methods=["GET"])
+    def approve_or_disapprove(self, request, *args, **kwargs):
+        student_id = request.GET.get("student_id")
+        if not student_id:
+            return Response({"error": "Student ID is required."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            student = Student.objects.get(id=student_id)
+        except Student.DoesNotExist:
+            return Response({"error": "Student not found."}, status=status.HTTP_404_NOT_FOUND)
+        
+        student.is_state_final_approval = not student.is_state_final_approval
+        student.save()
 
+        return Response({"message": "is_state_final_approval updated successfully."}, status=status.HTTP_200_OK)
+    
     @action(detail=False, methods=["GET"])
     def reset_major_selection(self, request):
         student_id = request.GET.get("student_id")
@@ -530,6 +553,8 @@ class MajorSelectionViewSet(
         student = Student.objects.get(id=request.GET.get("student_id"))
         student.is_state_choose_booklet_rows_done = False
         student.is_state_choose_default = False
+        student.process_start_time = timezone.now()
+        student.process_end_time = timezone.now()
         student.save()
         MajorSelection.objects.filter(student=student).delete()
         return Response("deleted", status=status.HTTP_204_NO_CONTENT)
@@ -723,7 +748,7 @@ class MajorSelectionViewSet(
                 fontName="Persian",
                 fontSize=20,
                 borderWidth=2,
-                borderColor=colors.HexColor("#F9B33D"),
+                borderColor=colors.HexColor("#276534"),
                 borderRadius=15,
                 textColor=colors.black,
                 leftIndent=140,
@@ -898,16 +923,16 @@ class MajorSelectionViewSet(
         for i, row in enumerate(data):
             if i == 0:
                 table_style.append(
-                    ("BACKGROUND", (0, i), (-1, i), colors.HexColor("#6336F0")),
+                    ("BACKGROUND", (0, i), (-1, i), colors.HexColor("#3e9e53")),
                 )
             else:
                 if i % 2 == 0:
                     table_style.append(
-                        ("BACKGROUND", (0, i), (-1, i), colors.HexColor("#CCCCFF")),
+                        ("BACKGROUND", (0, i), (-1, i), colors.HexColor("#edf7ef")),
                     )
                 else:
                     table_style.append(
-                        ("BACKGROUND", (0, i), (-1, i), colors.HexColor("#E6E6FA")),
+                        ("BACKGROUND", (0, i), (-1, i), colors.HexColor("#f7f7f7")),
                     )
 
         table.setStyle(table_style)
@@ -956,3 +981,4 @@ class MajorSelectionViewSet(
 
         # )
         return response
+       

@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from rest_framework.generics import get_object_or_404
 from rest_framework.validators import UniqueTogetherValidator
+from django.utils import timezone
 
 from booklet_information.models import (
     BookletRow,
@@ -103,6 +104,7 @@ class SelectProvinceForMajorCreateSerializer(serializers.ModelSerializer):
             id=self.context.get("request").GET.get("student_id")
         )
         student.is_state_choose_default = True
+        student.process_start_time = timezone.now()
         student.save()
         return validated_data
 
