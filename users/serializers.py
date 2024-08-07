@@ -195,7 +195,9 @@ class StudentListSerializerManagerNew(serializers.ModelSerializer):
         return obj.get_field_of_study_display()
 
     def get_advisor_name(self, obj):
-        return obj.student_advisor.name
+        if obj.student_advisor:
+            return obj.student_advisor.name
+        return 'ندارد'
     
 
     def get_process_info(self, obj):
@@ -209,6 +211,7 @@ class StudentListSerializerManagerNew(serializers.ModelSerializer):
             start_date_str = start_jalali.strftime('%m/%d')  # Month and day only
             return f"{start_time}\t{start_date_str}"  # Combined string with tab space
         return "انجام نشده"
+    
 
     class Meta:
         model = Student
@@ -290,7 +293,7 @@ class ReportCardSerializer(serializers.ModelSerializer):
 class StudentUploadSerializer(serializers.ModelSerializer):
     class Meta:
         model = Student
-        fields = ['first_name', 'last_name', 'mobile', 'gender', 'province', 'field_of_study', 'is_student']
+        fields = ['first_name', 'last_name', 'mobile', 'gender', 'province', 'field_of_study', 'is_student', 'school']
 
 from rest_framework import serializers
 from .models import Student, Advisor, School, Province
@@ -456,3 +459,14 @@ class AdvisorUpdateSerializer(serializers.Serializer):
 
     def to_representation(self, instance):
         return AdvisorCreateSerializer(instance).data
+
+
+class UpdateMbtiResultSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Student
+        fields = ['mbti_result']
+
+    def update(self, instance, validated_data):
+        instance.mbti_result = validated_data.get('mbti_result', instance.mbti_result)
+        instance.save()
+        return instance

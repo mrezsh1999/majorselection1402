@@ -25,7 +25,8 @@ from booklet_information.models import (
     Province,
     University,
     SelectProvince,
-    MajorSelection,z
+    MajorSelection,
+    MajorSelectionNode
 )
 from booklet_information.serializers import (
     InfoSerializer,
@@ -446,34 +447,36 @@ class MajorSelectionViewSet(
         elif self.request.method == "DELETE":
             return MajorSelectionDeleteSerializer
 
+    # def get_queryset(self):
+    #     student_id = self.request.GET.get("student_id")
+    #     return MajorSelection.objects.filter(student_id=student_id).order_by("rank")
     def get_queryset(self):
-        student_id = self.request.GET.get("student_id")
-        return MajorSelection.objects.filter(student_id=student_id).order_by("rank")
+        student_id = self.request.GET.get('student_id')
+        current_node = MajorSelection.objects.select_related('booklet_row').filter(student_id=student_id,
+                                                                                   head=True).first()
+        rank_counter = 0
+        major_selection_list = []
+        while current_node:
+            current_node.rank_counter = rank_counter + 1
+            major_selection_list.append(current_node)
+            current_node = MajorSelectionNode.objects.prefetch_related('major_selection').get(
+                major_selection=current_node).next_major_selection
+            rank_counter += 1
+        
+        return major_selection_list
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(
-            data=request.data,
-            many=True,
-            context={"student_id": request.GET.get("student_id")},
-        )
-        if serializer.is_valid():
-            with transaction.atomic():
-                # Bulk delete MajorSelection objects
-                MajorSelection.objects.filter(
-                    student_id=request.GET.get("student_id")
-                ).delete()
-
-                # Perform batch create
-                self.perform_create(serializer)
-
-                # Update student record
-                student_id = request.GET.get("student_id")
-                if request.user.is_advisor:
+        student_id = request.GET.get('student_id')
+        serializer = self.get_serializer(data=request.data, many=True, context={'student_id': request.GET.get('student_id')})
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        if request.user.is_advisor:
                     Student.objects.filter(id=student_id).update(
                         is_state_choose_booklet_rows_done=True,
                         process_end_time = timezone.now()
                     )
-                elif request.user.is_manager:
+        elif request.user.is_manager:
                     Student.objects.filter(id=student_id).update(
                         is_state_final_approval=Case(
                             When(is_state_final_approval=True, then=Value(False)),
@@ -481,6 +484,37 @@ class MajorSelectionViewSet(
                             output_field=BooleanField()
                         )
                     )
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        # serializer = self.get_serializer(
+        #     data=request.data,
+        #     many=True,
+        #     context={"student_id": request.GET.get("student_id")},
+        # )
+        # if serializer.is_valid():
+        #     with transaction.atomic():
+        #         # Bulk delete MajorSelection objects
+        #         MajorSelection.objects.filter(
+        #             student_id=request.GET.get("student_id")
+        #         ).delete()
+
+        #         # Perform batch create
+        #         self.perform_create(serializer)
+
+        #         # Update student record
+        #         student_id = request.GET.get("student_id")
+        #         if request.user.is_advisor:
+        #             Student.objects.filter(id=student_id).update(
+        #                 is_state_choose_booklet_rows_done=True,
+        #                 process_end_time = timezone.now()
+        #             )
+        #         elif request.user.is_manager:
+        #             Student.objects.filter(id=student_id).update(
+        #                 is_state_final_approval=Case(
+        #                     When(is_state_final_approval=True, then=Value(False)),
+        #                     When(is_state_final_approval=False, then=Value(True)),
+        #                     output_field=BooleanField()
+        #                 )
+        #             )
 
             # Use select_related to fetch related objects in advance
             # queryset = self.queryset.select_related("related_model")
@@ -491,22 +525,188 @@ class MajorSelectionViewSet(
             # # Serialize queryset
             # serialized_data = self.get_serializer(queryset, many=True).data
 
-            return Response("ok", status=status.HTTP_201_CREATED)
-        else:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        #     return Response("ok", status=status.HTTP_201_CREATED)
+        # else:
+        #     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
+    def update(self, request, *args, **kwargs):
+        student_id = request.GET.get('student_id')
+        current_node = MajorSelectionNode.objects.select_related('major_selection').filter(
+            major_selection_id=kwargs.get('pk'), major_selection__student_id=student_id).first()
+        next_node = current_node.next_major_selection
+
+        with transaction.atomic():
+            if current_node.major_selection.head:
+                next_node.head = True
+                next_node.save()
+
+                prev_selected_node = request.GET.get('prev_selected_node')
+                prev_new_position = MajorSelectionNode.objects.get(major_selection_id=prev_selected_node)
+                next_new_position = prev_new_position.next_major_selection
+
+                prev_position = MajorSelectionNode.objects.filter(major_selection=current_node.major_selection).first()
+                prev_position.next_major_selection = next_new_position
+                prev_position.major_selection.head = False
+                prev_position.major_selection.save()
+                prev_position.save()
+
+                prev_new_position.next_major_selection = current_node.major_selection
+                prev_new_position.save()
+            else:
+                prev_major_selection = MajorSelectionNode.objects.get(
+                    next_major_selection=current_node.major_selection).major_selection
+                prev_node = MajorSelectionNode.objects.get(major_selection=prev_major_selection)
+                prev_node.next_major_selection = next_node
+                prev_node.save()
+
+                prev_selected_node = request.GET.get('prev_selected_node')
+                if prev_selected_node == '0':
+                    prev_new_position = MajorSelection.objects.filter(student_id=student_id, head=True).first()
+                    prev_position = MajorSelectionNode.objects.filter(
+                        major_selection=current_node.major_selection).first()
+                    MajorSelectionNode.objects.filter(major_selection=current_node.major_selection).update(
+                        next_major_selection=prev_new_position)
+                    MajorSelection.objects.filter(id=prev_new_position.id).update(head=False)
+                    MajorSelection.objects.filter(id=prev_position.major_selection.id).update(head=True)
+                else:
+                    prev_new_position = MajorSelectionNode.objects.get(major_selection_id=prev_selected_node)
+                    next_new_position = prev_new_position.next_major_selection
+
+                    prev_position = MajorSelectionNode.objects.filter(
+                        major_selection=current_node.major_selection).first()
+                    prev_position.next_major_selection = next_new_position
+                    prev_position.save()
+
+                    prev_new_position.next_major_selection = current_node.major_selection
+                    prev_new_position.save()
+
+        return Response('ok')
+    
     def destroy(self, request, *args, **kwargs):
-        instance = MajorSelection.objects.filter(id__in=kwargs["pk"].split(","))
-        student = MajorSelection.objects.get(id=kwargs["pk"].split(",")[0]).student
-        self.perform_destroy(instance)
-        ranks = MajorSelection.objects.filter(student=student).order_by("rank")
-        y = 0
-        for rank in ranks:
-            y += 1
-            serializer = self.get_serializer(rank, data={"rank": y}, partial=True)
-            serializer.is_valid(raise_exception=True)
-            serializer.save()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        student_id = request.GET.get('student_id')
+        current_node = MajorSelection.objects.filter(booklet_row_id=kwargs.get('pk'), student_id=student_id).first()
+        next_node = MajorSelectionNode.objects.get(major_selection=current_node).next_major_selection
+        if current_node.head:
+            current_node.delete()
+            next_node.head = True
+            next_node.save()
+        else:
+            prev_major_selection = MajorSelectionNode.objects.get(next_major_selection=current_node).major_selection
+            prev_node = MajorSelectionNode.objects.get(major_selection=prev_major_selection)
+            prev_node.next_major_selection = next_node
+            prev_node.save()
+            current_node.delete()
+        return Response('ok')
+        # instance = MajorSelection.objects.filter(id__in=kwargs["pk"].split(","))
+        # student = MajorSelection.objects.get(id=kwargs["pk"].split(",")[0]).student
+        # self.perform_destroy(instance)
+        # ranks = MajorSelection.objects.filter(student=student).order_by("rank")
+        # y = 0
+        # for rank in ranks:
+        #     y += 1
+        #     serializer = self.get_serializer(rank, data={"rank": y}, partial=True)
+        #     serializer.is_valid(raise_exception=True)
+        #     serializer.save()
+        # return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=["POST"])
+    def change_ranks(self, request, *args, **kwargs):
+        try:
+            with transaction.atomic():
+                head_selection = MajorSelection.objects.filter(head=True).first()
+                if not head_selection:
+                    return Response({"detail": "No head found."}, status=status.HTTP_404_NOT_FOUND)
+                
+                current_node = MajorSelectionNode.objects.filter(major_selection=head_selection).first()
+                rank = 1
+                
+                while current_node:
+                    current_major_selection = current_node.major_selection
+                    current_major_selection.rank = rank
+                    current_major_selection.save()
+                    
+                    next_node = current_node.next_major_selection
+                    current_node = MajorSelectionNode.objects.filter(major_selection=next_node).first()
+                    rank += 1
+                
+                return Response({"detail": "Ranks updated successfully."}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=["DELETE"])
+    def bulk_delete(self, request, *args, **kwargs):
+        student_id = request.GET.get('student_id')
+        university_ids = request.data.get('university_ids', [])
+        genders = request.data.get('genders', [])
+        province_ids = request.data.get('province_ids', [])
+        major_ids = request.data.get('major_ids', [])
+        admissions = request.data.get('admissions', [])
+        courses = request.data.get('courses', [])
+
+        if not student_id:
+            return Response({'error': 'Missing student_id'}, status=400)
+        
+        if not (university_ids or genders or province_ids or major_ids or admissions or courses):
+            return Response({'error': 'At least one filter criteria must be provided'}, status=400)
+
+        filter_criteria = {'student_id': student_id}
+        
+        if university_ids:
+            filter_criteria['booklet_row__university_id__in'] = university_ids
+        if genders:
+            filter_criteria['booklet_row__gender__in'] = genders
+        if province_ids:
+            filter_criteria['booklet_row__university__province_id__in'] = province_ids
+        if major_ids:
+            filter_criteria['booklet_row__major_id__in'] = major_ids
+        if admissions:
+            filter_criteria['booklet_row__admission__in'] = admissions
+        if courses:
+            filter_criteria['booklet_row__course__in'] = courses
+        
+        with transaction.atomic():
+            while True:
+                major_selections_to_delete = MajorSelection.objects.filter(**filter_criteria).order_by('rank')
+
+                if not major_selections_to_delete.exists():
+                    break
+
+                major_selection = major_selections_to_delete.first()
+                next_node = MajorSelectionNode.objects.filter(major_selection=major_selection).first()
+
+                if next_node and major_selection.head:
+                    next_major_selection = next_node.next_major_selection
+                    major_selection.delete()
+                    if next_major_selection:
+                        next_major_selection.head = True
+                        next_major_selection.save()
+                elif next_node:
+                    prev_node = MajorSelectionNode.objects.filter(next_major_selection=major_selection).first()
+                    if prev_node:
+                        prev_node.next_major_selection = next_node.next_major_selection
+                        prev_node.save()
+                    major_selection.delete()
+                else:
+                    major_selection.delete()
+
+            # After deletion, update the ranks of the remaining MajorSelection objects
+            remaining_major_selections = MajorSelection.objects.filter(
+                student_id=student_id
+            ).order_by('rank')
+
+            for index, remaining_major_selection in enumerate(remaining_major_selections, start=1):
+                remaining_major_selection.rank = index
+                remaining_major_selection.save()
+
+            # # Ensure the head is properly reassigned if needed
+            # if remaining_major_selections.exists():
+            #     head_selection = remaining_major_selections.first()
+            #     if not head_selection.head:
+            #         head_selection.head = True
+            #         head_selection.save()
+
+        return Response('ok', status=204)
     
     @action(detail=False, methods=["GET"])
     def approve_or_disapprove(self, request, *args, **kwargs):
@@ -526,27 +726,43 @@ class MajorSelectionViewSet(
     
     @action(detail=False, methods=["GET"])
     def reset_major_selection(self, request):
-        student_id = request.GET.get("student_id")
-        student_gender = Student.objects.get(id=student_id).gender 
-        genders = [1, 2] if student_gender else [0, 2]
-        select_province_for_majors = SelectProvinceForMajor.objects.filter(
-            student_id=student_id
-        ).order_by("index")
+        student_id = request.GET.get('student_id')
+        student = Student.objects.get(id=student_id)
+        student.is_state_choose_booklet_rows = False
+        student.is_state_choose_booklet_rows_done = False
+        student.save()
+        select_province_for_majors = SelectProvinceForMajor.objects.filter(student_id=student_id).order_by('index')
         booklet_rows = []
         for select_province_for_major in select_province_for_majors:
             major_id = select_province_for_major.major_id
             select_province = select_province_for_major.select_province
-            for province in select_province.order_by("index"):
-                province_id = province.province.id
-                booklet_row = BookletRow.objects.filter(
-                    major_id=major_id, university__province_id=province_id, gender__in=genders
-                ).order_by("university__rank")
+            for province in select_province.order_by('index'):
+                province_id = province.province_id
+                booklet_row = BookletRow.objects.filter(major_id=major_id, university__province_id=province_id)
                 booklet_rows += booklet_row
-        sorted_list = sorted(booklet_rows, key=lambda x: (x.course))
-        serializer = MajorSelectionResetSerializer(
-            sorted_list, many=True, context={"student_id": student_id}
-        )
+        serializer = MajorSelectionResetSerializer(booklet_rows, many=True, context={'student_id': student_id})
         return Response(serializer.data)
+        # student_id = request.GET.get("student_id")
+        # student_gender = Student.objects.get(id=student_id).gender 
+        # genders = [1, 2] if student_gender else [0, 2]
+        # select_province_for_majors = SelectProvinceForMajor.objects.filter(
+        #     student_id=student_id
+        # ).order_by("index")
+        # booklet_rows = []
+        # for select_province_for_major in select_province_for_majors:
+        #     major_id = select_province_for_major.major_id
+        #     select_province = select_province_for_major.select_province
+        #     for province in select_province.order_by("index"):
+        #         province_id = province.province.id
+        #         booklet_row = BookletRow.objects.filter(
+        #             major_id=major_id, university__province_id=province_id, gender__in=genders
+        #         ).order_by("university__rank")
+        #         booklet_rows += booklet_row
+        # sorted_list = sorted(booklet_rows, key=lambda x: (x.course))
+        # serializer = MajorSelectionResetSerializer(
+        #     sorted_list, many=True, context={"student_id": student_id}
+        # )
+        # return Response(serializer.data)
 
     @action(detail=False, methods=["GET"])
     def reset_proccess(self, request):

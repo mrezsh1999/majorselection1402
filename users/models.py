@@ -86,6 +86,7 @@ class Advisor(User):
 class School(models.Model):
     title = models.CharField(max_length=64)
     manager = models.ForeignKey(Manager, on_delete=models.SET_NULL, null=True, blank=True)
+    logo = models.ImageField(upload_to="logos", null=True, blank=True)
 
     class Meta:
         verbose_name = _('school')
@@ -129,6 +130,7 @@ class Student(User):
     process_start_time = models.DateTimeField(null=True, blank=True)
     process_end_time = models.DateTimeField(null=True, blank=True)
     school = models.ForeignKey(School, on_delete=models.PROTECT, null=True, blank=True)
+    mbti_result = models.CharField(max_length=150, null=True, blank=True)
 
     class Meta:
         verbose_name = _("student")

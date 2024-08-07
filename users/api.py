@@ -34,7 +34,8 @@ from users.serializers import (
     UserNoAdvisorSerializer,
     AdvisorIdSerializer,
     AdvisorUpdateSerializer,
-    StudentUpdateSerializer
+    StudentUpdateSerializer,
+    UpdateMbtiResultSerializer
 )
 
 
@@ -84,8 +85,10 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewS
         if self.request.user.is_advisor:
             return Student.objects.filter(student_advisor=self.request.user).order_by("field_of_study", "last_name")
         elif self.request.user.is_manager:
+            manager = Manager.objects.get(id=self.request.user.id)
+            school = manager.school_set.first()
             return Student.objects.filter(
-                student_advisor__manager_field=self.request.user
+                school=school
             ).order_by("student_advisor__last_name", "field_of_study", "last_name").order_by('process_start_time')
         else:
                 return Student.objects.all()
@@ -250,8 +253,10 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewS
     def get_students_for_or_without_advisor(self, request):
         advisor_id = request.query_params.get('advisor_id')
         if advisor_id:
+            manager = Manager.objects.get(id=request.user.id)
+            school = manager.school_set.first()
             students = Student.objects.filter(
-                models.Q(student_advisor__id=advisor_id) | models.Q(student_advisor__isnull=True)
+                models.Q(student_advisor__id=advisor_id) | (models.Q(student_advisor__isnull=True) & models.Q(school=school))
             )
         else:
             students = Student.objects.filter(student_advisor__isnull=True)
@@ -272,6 +277,21 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewS
         
         serializer = AdvisorIdSerializer(advisor)
         return Response(serializer.data)
+    
+    @action(detail=False, methods=["POST"], permission_classes=[AllowAny])   
+    def mbti_result(self, request, *args, **kwargs):
+        student = Student.objects.get(mobile=request.user)
+        serializer = UpdateMbtiResultSerializer(data=request.data, instance=student)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                {"success": "MBTI result updated successfully"},
+                status=status.HTTP_200_OK
+            )
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
     
     @action(detail=False, methods=["POST"], permission_classes=[AllowAny])
     def advisors_group(self, request):
@@ -328,6 +348,11 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewS
         }
         gender_mapping = {"مرد": True, "زن": False}
 
+        manager = Manager.objects.get(id=request.user.id)
+        school = manager.school_set.first()
+        if not school:
+            return Response({'error': 'Manager does not have an associated school'}, status=status.HTTP_400_BAD_REQUEST)
+
         students = []
         for _, row in df.iterrows():
             first_name = row['نام']
@@ -341,6 +366,7 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewS
                 province = Province.objects.get(title=province_name)
             except Province.DoesNotExist:
                 return Response({'error': f'Province {province_name} does not exist'}, status=status.HTTP_400_BAD_REQUEST)
+                
 
             student_data = {
                 'first_name': first_name,
@@ -349,7 +375,8 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewS
                 'gender': gender,
                 'province': province.id,
                 'field_of_study': field_of_study,
-                'is_student': True
+                'is_student': True,
+                'school': school.id
             }
 
             try:
@@ -360,6 +387,7 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewS
             if serializer.is_valid():
                 students.append(serializer)
             else:
+                print(serializer.errors)
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         for student in students:

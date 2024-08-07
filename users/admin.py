@@ -24,7 +24,7 @@ class StudentAdmin(admin.ModelAdmin):
         (_('Personal info'),
          {'fields': (
              'first_name', 'last_name', 'mobile', 'is_student', 'gender', 'national_code', 'province',
-             'volunteer_code')}),
+             'volunteer_code', 'mbti_result')}),
         (_('Educational info'), {
             'fields': ('field_of_study', 'student_advisor', 'school')}),
         (_('State'),

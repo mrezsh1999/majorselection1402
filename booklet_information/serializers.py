@@ -13,6 +13,7 @@ from booklet_information.models import (
     Major,
     University,
     MajorSelection,
+    MajorSelectionNode
 )
 from users.models import Student
 
@@ -222,13 +223,17 @@ class MajorSelectionListSerializer(serializers.ModelSerializer):
     province = serializers.SerializerMethodField("get_province")
     major_title = serializers.SerializerMethodField("get_major_title")
     course = serializers.SerializerMethodField("get_major_course")
+    course_code = serializers.SerializerMethodField("get_major_course_code")
     exam_based = serializers.SerializerMethodField("get_exam_based")
     gender = serializers.SerializerMethodField("get_gender")
+    gender_code = serializers.SerializerMethodField("get_gender_code")
     field_of_study = serializers.SerializerMethodField("get_field_of_study")
     admission = serializers.SerializerMethodField("get_admission")
+    admission_code = serializers.SerializerMethodField("get_admission_code")
     major = serializers.SerializerMethodField("get_major")
     major_code = serializers.SerializerMethodField("get_major_code")
     id = serializers.SerializerMethodField("get_id")
+    id_major_selection = serializers.SerializerMethodField("get_id_major_selection")
 
     def get_major_code(self, obj):
         return obj.booklet_row.major_code
@@ -247,12 +252,18 @@ class MajorSelectionListSerializer(serializers.ModelSerializer):
 
     def get_major_course(self, obj):
         return obj.booklet_row.get_course_display()
+    
+    def get_major_course_code(self, obj):
+        return obj.booklet_row.course
 
     def get_exam_based(self, obj):
         return obj.booklet_row.get_exam_based_display()
 
     def get_gender(self, obj):
         return obj.booklet_row.get_gender_display()
+    
+    def get_gender_code(self, obj):
+        return obj.booklet_row.gender
 
     def get_field_of_study(self, obj):
         return obj.booklet_row.major.get_field_of_study_display()
@@ -260,13 +271,20 @@ class MajorSelectionListSerializer(serializers.ModelSerializer):
     def get_admission(self, obj):
         return obj.booklet_row.get_admission_display()
 
+    def get_admission_code(self, obj):
+        return obj.booklet_row.admission
+    
     def get_id(self, obj):
         return obj.booklet_row.id
+
+    def get_id_major_selection(self, obj):
+        return obj.id
 
     class Meta:
         model = MajorSelection
         fields = [
             "id",
+            "id_major_selection",
             "rank",
             "province",
             "university",
@@ -274,6 +292,9 @@ class MajorSelectionListSerializer(serializers.ModelSerializer):
             "major",
             "major_code",
             "course",
+            "course_code",
+            "gender_code",
+            "admission_code",
             "exam_based",
             "gender",
             "field_of_study",
@@ -297,19 +318,45 @@ class MajorSelectionListSerializer(serializers.ModelSerializer):
 
 
 class MajorSelectionCreateSerializer(serializers.ModelSerializer):
-    rank = 0
-
     def create(self, validated_data):
-        self.rank += 1
-        obj = MajorSelection.objects.create(
-            **validated_data, rank=self.rank, student_id=self.context.get("student_id")
-        )
-        obj.save()
-        return obj
+        student_id = self.context.get('student_id')
+        if MajorSelection.objects.filter(student_id=student_id).last():
+            rank =  MajorSelection.objects.filter(student_id=student_id).last().rank
+        else:
+            rank = 0
+        head = MajorSelection.objects.filter(student_id=student_id, head=True)
+        rank += 1
+        if not head:
+            booklet_row = validated_data['booklet_row']
+            major_selection = MajorSelection.objects.create(booklet_row=booklet_row, rank=rank, student_id=student_id, head=True)
+            MajorSelectionNode.objects.create(major_selection=major_selection)
+            return major_selection
+
+        current_node = MajorSelectionNode.objects.filter(major_selection__student_id=student_id, next_major_selection__isnull=True).first()
+
+        booklet_row = validated_data['booklet_row']
+        major_selection = MajorSelection.objects.create(booklet_row=booklet_row, rank=rank, student_id=student_id)
+        MajorSelectionNode.objects.create(major_selection=major_selection, next_major_selection=current_node.next_major_selection)
+        current_node.next_major_selection = major_selection
+        current_node.save()
+        return major_selection
 
     class Meta:
         model = MajorSelection
-        fields = ["id", "booklet_row"]
+        fields = ['booklet_row']
+    # rank = 0
+
+    # def create(self, validated_data):
+    #     self.rank += 1
+    #     obj = MajorSelection.objects.create(
+    #         **validated_data, rank=self.rank, student_id=self.context.get("student_id")
+    #     )
+    #     obj.save()
+    #     return obj
+
+    # class Meta:
+    #     model = MajorSelection
+    #     fields = ["id", "booklet_row"]
         # list_serializer_class = HumanListSerializer
 
 
