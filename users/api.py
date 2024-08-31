@@ -35,7 +35,8 @@ from users.serializers import (
     AdvisorIdSerializer,
     AdvisorUpdateSerializer,
     StudentUpdateSerializer,
-    UpdateMbtiResultSerializer
+    UpdateMbtiResultSerializer,
+    UserMbtiResultSerializer
 )
 
 
@@ -292,6 +293,26 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewS
             serializer.errors,
             status=status.HTTP_400_BAD_REQUEST
         )
+    
+    @action(detail=False, methods=["GET"], permission_classes=[AllowAny])   
+    def get_mbti_result(self, request, *args, **kwargs):
+        student = Student.objects.get(mobile=request.user)
+        serializer = UserMbtiResultSerializer(student)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=["GET"], permission_classes=[AllowAny])   
+    def get_mbti_result_with_id(self, request, *args, **kwargs):
+        student_id = request.query_params.get('student_id')
+        if not student_id:
+            return Response({"error": "student_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            student = Student.objects.get(id=student_id)
+        except Student.DoesNotExist:
+            return Response({"error": "Student not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = UserMbtiResultSerializer(student)
+        return Response(serializer.data, status=status.HTTP_200_OK)
     
     @action(detail=False, methods=["POST"], permission_classes=[AllowAny])
     def advisors_group(self, request):

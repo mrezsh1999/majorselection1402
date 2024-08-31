@@ -24,7 +24,9 @@ class StudentAdmin(admin.ModelAdmin):
         (_('Personal info'),
          {'fields': (
              'first_name', 'last_name', 'mobile', 'is_student', 'gender', 'national_code', 'province',
-             'volunteer_code', 'mbti_result')}),
+             'volunteer_code', 'mbti_result', 'f_count', 'f_percentage', 'i_count', 'i_percentage', 'e_count', 'e_percentage',
+             'j_count', 'j_percentage', 'n_count', 'n_percentage', 'p_count', 'p_percentage', 's_count',
+             's_percentage', 't_count', 't_percentage')}),
         (_('Educational info'), {
             'fields': ('field_of_study', 'student_advisor', 'school')}),
         (_('State'),

@@ -15,7 +15,8 @@ from rest_framework.permissions import IsAuthenticated
 import time
 from django.utils import timezone
 from django.db.models import Case, When, Value, BooleanField
-
+import pandas as pd
+from fuzzywuzzy import fuzz
 from booklet_information.models import (
     BookletRow,
     SelectDefaultProvince,
@@ -54,6 +55,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.units import inch
 from reportlab.pdfgen.canvas import Canvas
+from django.shortcuts import get_object_or_404
 
 from bidi.algorithm import get_display
 from rtl import reshaper
@@ -136,111 +138,199 @@ class InfoViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, GenericViewSet
 
 
 
+    # def create(self, request, *args, **kwargs):
+    #     list10 = []
+    #     excel_file = request.data.get("file")
+    #     data = get_data(excel_file, column_limit=8)
+    #     rows = data["Sheet1"]
+    #     rows.pop(0)
+
+    #     for row in rows:
+    #         y = x = q = g = None
+    #         province = row[7]
+    #         university = row[6]
+    #         major = row[2]
+    #         code = row[3]
+    #         course = row[4]
+    #         exam_based = row[5]
+    #         try:
+    #             gender = row[0]
+    #             if gender == "مرد":
+    #                 g = 1
+    #             elif gender == "زن":
+    #                 g = 0
+    #             else:
+    #                 g = 2
+    #         except:
+    #             g = 2
+    #         admission = row[1]
+
+    #         # if gender == " " or gender == "" or gender == None:
+    #         #     g = 2
+    #         # elif gender == 1:
+    #         #     g = 1
+    #         # elif gender == 2:
+    #         #     g = 0
+
+    #         if exam_based == "با آزمون":
+    #             exam_based = True
+    #         elif exam_based == "صرفا با سوابق تحصیلی":
+    #             exam_based = False
+
+    #         if course == "روزانه":
+    #             q = 0
+
+    #         elif course == "نوبت دوم":
+    #             q = 1
+
+    #         elif course == "پردیس خودگردان":
+    #             q = 2
+
+    #         elif course == "شهریه پرداز":
+    #             q = 3
+
+    #         elif course == "پیام نور":
+    #             q = 4
+
+    #         elif course == "غیر انتفاعی":
+    #             q = 5
+
+    #         elif course == "مجازی":
+    #             q = 6
+
+    #         elif course == "خودگردان آزاد":
+    #             q = 7
+
+    #         elif course == "آزاد تمام وقت":
+    #             q = 8
+
+    #         elif course == "فرهنگیان":
+    #             q = 9
+
+    #         elif course == "بومی":
+    #             q = 10
+
+    #         if admission == "اول":
+    #             admission = 0
+
+    #         elif admission == "دوم":
+    #             admission = 1
+
+    #         if Major.objects.filter(title=major, field_of_study=2):
+    #             y = Major.objects.get(title=major, field_of_study=2)
+    #         else:
+    #             y = Major.objects.create(title=major, field_of_study=2)
+
+    #         if University.objects.filter(title=university):
+    #             x = University.objects.filter(title=university).first()
+
+    #         else:
+    #             z = Province.objects.get(title=province)
+    #             x = University.objects.create(title=university, province=z)
+
+    #         # Example.objects.update_or_create(exam_based=exam_based,
+    #         #                                  course=q,
+    #         #                                  university=x,
+    #         #                                  gender=g,
+    #         #                                  major=y,
+    #         #                                  defaults={'code': code})
+    #         BookletRow.objects.create(
+    #             exam_based=exam_based,
+    #             course=q,
+    #             university=x,
+    #             gender=g,
+    #             major=y,
+    #             major_code=code,
+    #             admission=admission,
+    #         )
+    #     return Response("ok")
+
     def create(self, request, *args, **kwargs):
-        list10 = []
         excel_file = request.data.get("file")
-        data = get_data(excel_file, column_limit=8)
-        rows = data["Sheet1"]
-        rows.pop(0)
+        field_of_study = request.data.get("field_of_study")  # Get field of study from the request body
+        
+        # Read the Excel file using pandas
+        df = pd.read_excel(excel_file, sheet_name='Sheet1')
+        
+        course_map = {
+            "روزانه": BookletRow.DAILY,
+            "نوبت دوم": BookletRow.NIGHTLY,
+            "پردیس خودگردان": BookletRow.PARDIS,
+            "شهریه پرداز": BookletRow.SHAHRIEPARDAZ,
+            "پیام نور": BookletRow.PAYAMNOOR,
+            "غیر انتفاعی": BookletRow.GHEIRENTEFAEI,
+            "مجازی": BookletRow.MAJAZI,
+            "خودگردان آزاد": BookletRow.KHODGARDANAZAD,
+            "آزاد تمام وقت": BookletRow.AZADTAMAMVAGHT,
+            "فرهنگیان": BookletRow.FARHANGIAN,
+            "بومی": BookletRow.BOMI,
+        }
 
-        for row in rows:
-            y = x = q = g = None
-            province = row[7]
-            university = row[6]
-            major = row[2]
-            code = row[3]
-            course = row[4]
-            exam_based = row[5]
+        gender_map = {
+            "مرد": 1,
+            "زن": 0,
+            "هردو": 2
+        }
+
+        admission_map = {
+            "اول": 0,
+            "دوم": 1
+        }
+
+        for index, row in df.iterrows():
             try:
-                gender = row[0]
-                if gender == "مرد":
-                    g = 1
-                elif gender == "زن":
-                    g = 0
+                # Check for missing or empty values
+                if row.isnull().any():
+                    raise ValueError(f"Row {index + 1} is empty or has missing values: {row.to_dict()}")
+
+                province_name = row[7]
+                university_name = row[6]
+                major_name = row[2]
+                major_code = row[3]
+                course_name = row[4]
+                exam_based = row[5] == "صرفا با سوابق تحصیلی"
+                gender = gender_map.get(row[0])
+                admission = admission_map.get(row[1])
+
+                if gender is None:
+                    raise ValueError(f"Invalid gender value in row {index + 1}: {row[0]}")
+
+                if admission is None:
+                    raise ValueError(f"Invalid admission value in row {index + 1}: {row[1]}")
+
+                # Get the related Province; if not found, raise an error
+                try:
+                    province = Province.objects.get(title=province_name)
+                except Province.DoesNotExist:
+                    raise ValueError(f"Province '{province_name}' does not exist in row {index + 1}")
+
+                # Get or create the related Major, now including field_of_study from the request
+                major, _ = Major.objects.get_or_create(title=major_name, field_of_study=field_of_study)
+
+                # Get or create the related University
+                university, _ = University.objects.get_or_create(title=university_name, province=province)
+
+                # Check if a BookletRow with the same major_code already exists
+                booklet_row, created = BookletRow.objects.update_or_create(
+                    major_code=major_code,
+                    defaults={
+                        'exam_based': exam_based,
+                        'course': course_map.get(course_name, BookletRow.DAILY),  # Default to 'روزانه' if not found
+                        'university': university,
+                        'gender': gender,
+                        'major': major,
+                        'admission': admission,
+                    }
+                )
+
+                if created:
+                    print(f"Created new BookletRow for major_code {major_code}")
                 else:
-                    g = 2
-            except:
-                g = 2
-            admission = row[1]
+                    print(f"Updated existing BookletRow for major_code {major_code}")
 
-            # if gender == " " or gender == "" or gender == None:
-            #     g = 2
-            # elif gender == 1:
-            #     g = 1
-            # elif gender == 2:
-            #     g = 0
+            except Exception as e:
+                return Response(f"Error processing row {index + 1}: {e}", status=400)
 
-            if exam_based == "با آزمون":
-                exam_based = True
-            elif exam_based == "صرفا با سوابق تحصیلی":
-                exam_based = False
-
-            if course == "روزانه":
-                q = 0
-
-            elif course == "نوبت دوم":
-                q = 1
-
-            elif course == "پردیس خودگردان":
-                q = 2
-
-            elif course == "شهریه پرداز":
-                q = 3
-
-            elif course == "پیام نور":
-                q = 4
-
-            elif course == "غیر انتفاعی":
-                q = 5
-
-            elif course == "مجازی":
-                q = 6
-
-            elif course == "خودگردان آزاد":
-                q = 7
-
-            elif course == "آزاد تمام وقت":
-                q = 8
-
-            elif course == "فرهنگیان":
-                q = 9
-
-            elif course == "بومی":
-                q = 10
-
-            if admission == "اول":
-                admission = 0
-
-            elif admission == "دوم":
-                admission = 1
-
-            if Major.objects.filter(title=major, field_of_study=2):
-                y = Major.objects.get(title=major, field_of_study=2)
-            else:
-                y = Major.objects.create(title=major, field_of_study=2)
-
-            if University.objects.filter(title=university):
-                x = University.objects.filter(title=university).first()
-
-            else:
-                z = Province.objects.get(title=province)
-                x = University.objects.create(title=university, province=z)
-
-            # Example.objects.update_or_create(exam_based=exam_based,
-            #                                  course=q,
-            #                                  university=x,
-            #                                  gender=g,
-            #                                  major=y,
-            #                                  defaults={'code': code})
-            BookletRow.objects.create(
-                exam_based=exam_based,
-                course=q,
-                university=x,
-                gender=g,
-                major=y,
-                major_code=code,
-                admission=admission,
-            )
         return Response("ok")
 
     @action(detail=False, methods=["DELETE"])
@@ -249,6 +339,67 @@ class InfoViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, GenericViewSet
         University.objects.all().delete()
         Major.objects.all().delete()
         return Response("ok")
+    
+    @action(detail=False, methods=["POST"])
+    def update_university_ranks(self, request, *args, **kwargs):
+        file = request.FILES.get('file')
+        if not file:
+            return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Process the uploaded Excel file with pandas
+        try:
+            df = pd.read_excel(file)
+        except Exception as e:
+            return Response({"error": f"Failed to read Excel file: {e}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Ensure the dataframe has the expected columns
+        expected_columns = ['استان', 'نام دانشگاه', 'رنک دانشگاه']
+        if not all(column in df.columns for column in expected_columns):
+            return Response({"error": "Excel file must contain the correct columns"}, status=status.HTTP_400_BAD_REQUEST)
+        unmatched_rows = []
+        # Iterate over the rows in the dataframe
+        for index, row in df.iterrows():
+            university_rank = row['رنک دانشگاه']
+            
+            # Skip the row if the university rank is empty or NaN
+            if pd.isna(university_rank):
+                continue
+
+            province_title = row['استان'].strip()
+            university_name = row['نام دانشگاه'].strip()
+
+            # Find or create the province
+            province = get_object_or_404(Province, title=province_title)
+
+
+            if province:
+                # Get all universities in the given province
+                universities = University.objects.filter(province=province)
+                
+                # Initialize a variable to track the best match
+                best_match = None
+                highest_similarity = 0
+                
+                # Check each university in the province for the best fuzzy match
+                for university in universities:
+                    similarity = fuzz.ratio(university.title, university_name)
+                    if similarity > highest_similarity:
+                        highest_similarity = similarity
+                        best_match = university
+
+                # Update the rank if the best match has a similarity of 90% or more
+                if highest_similarity >= 80:
+                    best_match.rank = university_rank
+                    best_match.save()
+                else:
+                    unmatched_rows.append(index)
+            else:
+                unmatched_rows.append(index)
+                
+        print(f"Unmatched row indexes: {unmatched_rows}")
+
+        return Response({"message": "Universities updated successfully"}, status=status.HTTP_200_OK)
+
 
     @action(detail=False, methods=["POST", "GET"])
     def booklet_rows_query(self, request):
@@ -798,11 +949,13 @@ class MajorSelectionViewSet(
 
         class FooterCanvasGirl(canvas.Canvas):
             os.chdir("/home/mrezash/majorselection1402/booklet_information/images")
+            # os.chdir(r"C:/Users/Asus/Desktop/MajorFinal/majorselection1402/booklet_information/images")
 
-            def __init__(self, *args, **kwargs):
+            def __init__(self, institute_logo, *args, **kwargs):
                 canvas.Canvas.__init__(self, *args, **kwargs)
                 self.pages = []
                 self.width, self.height = LETTER
+                self.institute_logo = institute_logo
 
             def showPage(self):
                 self.pages.append(dict(self.__dict__))
@@ -826,7 +979,9 @@ class MajorSelectionViewSet(
                 self.setStrokeColorRGB(0, 0, 0)
                 self.setLineWidth(0.5)
                 self.drawImage(
-                    "/home/mrezash/majorselection1402/booklet_information/images/Logo.png",
+                    # "/home/mrezash/majorselection1402/booklet_information/images/Logo.png",
+                    # "C:/Users/Asus/Desktop/MajorFinal/majorselection1402/booklet_information/images/Logo.png",
+                    self.institute_logo,
                     self.width - inch * 2.5,
                     self.height - 70,
                     width=200,
@@ -837,6 +992,7 @@ class MajorSelectionViewSet(
 
                 self.drawImage(
                     "/home/mrezash/majorselection1402/booklet_information/images/check.png",
+                    # "C:/Users/Asus/Desktop/MajorFinal/majorselection1402/booklet_information/images/check.png",
                     self.width - inch * 9,
                     self.height - 70,
                     width=200,
@@ -863,10 +1019,11 @@ class MajorSelectionViewSet(
                 self.restoreState()
 
         class FooterCanvasBoy(canvas.Canvas):
-            def __init__(self, *args, **kwargs):
+            def __init__(self, institute_logo, *args, **kwargs):
                 canvas.Canvas.__init__(self, *args, **kwargs)
                 self.pages = []
                 self.width, self.height = LETTER
+                self.institute_logo = institute_logo
 
             def showPage(self):
                 self.pages.append(dict(self.__dict__))
@@ -890,7 +1047,9 @@ class MajorSelectionViewSet(
                 self.setStrokeColorRGB(0, 0, 0)
                 self.setLineWidth(0.5)
                 self.drawImage(
-                    "/home/mrezash/majorselection1402/booklet_information/images/Logo.png",
+                    # "/home/mrezash/majorselection1402/booklet_information/images/Logo.png",
+                    # "C:/Users/Asus/Desktop/MajorFinal/majorselection1402/booklet_information/images/Logo.png",
+                    self.institute_logo,
                     self.width - inch * 2.5,
                     self.height - 70,
                     width=200,
@@ -901,6 +1060,8 @@ class MajorSelectionViewSet(
 
                 self.drawImage(
                     "/home/mrezash/majorselection1402/booklet_information/images/check-boy.png",
+                    # "C:/Users/Asus/Desktop/MajorFinal/majorselection1402/booklet_information/images/check-boy.png",
+
                     self.width - inch * 9,
                     self.height - 77,
                     width=200,
@@ -932,6 +1093,7 @@ class MajorSelectionViewSet(
         # )
         os.chdir("/home/mrezash/majorselection1402/booklet_information/persian")
         pdfmetrics.registerFont(TTFont("Persian", "Bahij-Nazanin-Regular.ttf"))
+        pdfmetrics.registerFont(TTFont("Persian-Bold", "Bahij_Nazanin-Bold.ttf"))
 
         styles = getSampleStyleSheet()
         stylesHeader = getSampleStyleSheet()
@@ -951,8 +1113,8 @@ class MajorSelectionViewSet(
             ParagraphStyle(
                 name="Right",
                 alignment=TA_CENTER,
-                fontName="Persian",
-                fontSize=10,
+                fontName="Persian-Bold",
+                fontSize=9,
                 textColor=colors.white,
             )
         )
@@ -967,8 +1129,8 @@ class MajorSelectionViewSet(
                 borderColor=colors.HexColor("#276534"),
                 borderRadius=15,
                 textColor=colors.black,
-                leftIndent=140,
-                rightIndent=140,
+                leftIndent=50,
+                rightIndent=50,
             )
         )
 
@@ -1092,11 +1254,16 @@ class MajorSelectionViewSet(
 
                 data[i][j] = p
 
-        institue_text = "مجموعه آموزشی توانا"
 
         student_name = Student.objects.get(id=request.GET.get("student_id")).name
 
         student_gender = Student.objects.get(id=request.GET.get("student_id")).gender
+        
+        institue_text = Student.objects.get(id=request.GET.get("student_id")).school.title
+
+        student = Student.objects.get(id=request.GET.get("student_id"))
+        institute_logo = student.school.logo.path if student.school and student.school.logo else None
+
 
         student_name = (
             "نام دانش آموز: "
@@ -1119,6 +1286,8 @@ class MajorSelectionViewSet(
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#6336F0")),
             ("ALIGN", (0, 0), (0, -1), "CENTER"),
             ("VALIGN", (0, 0), (0, -1), "MIDDLE"),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("ALIGN", (1, 0), (1, -1), "CENTER"),
             ("VALIGN", (1, 0), (1, -1), "MIDDLE"),
             ("ALIGN", (2, 0), (2, -1), "CENTER"),
@@ -1173,7 +1342,8 @@ class MajorSelectionViewSet(
                     ),
                 ]
                 + elements,
-                canvasmaker=FooterCanvasBoy,
+                canvasmaker=lambda *args, **kwargs: FooterCanvasBoy(institute_logo, *args, **kwargs),
+
             )
         else:
             doc.multiBuild(
@@ -1190,7 +1360,7 @@ class MajorSelectionViewSet(
                     ),
                 ]
                 + elements,
-                canvasmaker=FooterCanvasGirl,
+                canvasmaker=lambda *args, **kwargs: FooterCanvasGirl(institute_logo, *args, **kwargs),
             )
 
         # doc.build(

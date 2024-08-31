@@ -464,9 +464,49 @@ class AdvisorUpdateSerializer(serializers.Serializer):
 class UpdateMbtiResultSerializer(serializers.ModelSerializer):
     class Meta:
         model = Student
-        fields = ['mbti_result']
+        fields = ['mbti_result', 'f_count', 'f_percentage', 'i_count', 'i_percentage', 'e_count', 'e_percentage', 'j_count', 'j_percentage', 'n_count', 'n_percentage', 'p_count', 'p_percentage', 's_count', 's_percentage', 't_count', 't_percentage']
 
     def update(self, instance, validated_data):
         instance.mbti_result = validated_data.get('mbti_result', instance.mbti_result)
+        instance.f_count = validated_data.get('f_count', instance.f_count)
+        instance.f_percentage = validated_data.get('f_percentage', instance.f_percentage)
+        instance.i_count = validated_data.get('i_count', instance.i_count)
+        instance.i_percentage = validated_data.get('i_percentage', instance.i_percentage)
+        instance.e_count = validated_data.get('e_count', instance.e_count)
+        instance.e_percentage = validated_data.get('e_percentage', instance.e_percentage)
+        instance.j_count = validated_data.get('j_count', instance.j_count)
+        instance.j_percentage = validated_data.get('j_percentage', instance.j_percentage)
+        instance.n_count = validated_data.get('n_count', instance.n_count)
+        instance.n_percentage = validated_data.get('n_percentage', instance.n_percentage)
+        instance.p_count = validated_data.get('p_count', instance.p_count)
+        instance.p_percentage = validated_data.get('p_percentage', instance.p_percentage)
+        instance.s_count = validated_data.get('s_count', instance.s_count)
+        instance.s_percentage = validated_data.get('s_percentage', instance.s_percentage)
+        instance.t_count = validated_data.get('t_count', instance.t_count)
+        instance.t_percentage = validated_data.get('t_percentage', instance.t_percentage)
         instance.save()
         return instance
+    
+
+class UserMbtiResultSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Student
+        fields = [
+            'mbti_result',
+            'f_count',
+            'f_percentage',
+            'i_count',
+            'i_percentage',
+            'e_count',
+            'e_percentage',
+            'j_count',
+            'j_percentage',
+            'n_count',
+            'n_percentage',
+            'p_count',
+            'p_percentage',
+            's_count',
+            's_percentage',
+            't_count',
+            't_percentage'
+        ]
