@@ -16,7 +16,6 @@ import time
 from django.utils import timezone
 from django.db.models import Case, When, Value, BooleanField
 import pandas as pd
-from fuzzywuzzy import fuzz
 from booklet_information.models import (
     BookletRow,
     SelectDefaultProvince,
@@ -371,26 +370,12 @@ class InfoViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, GenericViewSet
             # Find or create the province
             province = get_object_or_404(Province, title=province_title)
 
-
+            # Check if the province and university exist
             if province:
-                # Get all universities in the given province
-                universities = University.objects.filter(province=province)
-                
-                # Initialize a variable to track the best match
-                best_match = None
-                highest_similarity = 0
-                
-                # Check each university in the province for the best fuzzy match
-                for university in universities:
-                    similarity = fuzz.ratio(university.title, university_name)
-                    if similarity > highest_similarity:
-                        highest_similarity = similarity
-                        best_match = university
-
-                # Update the rank if the best match has a similarity of 90% or more
-                if highest_similarity >= 80:
-                    best_match.rank = university_rank
-                    best_match.save()
+                university = University.objects.filter(title=university_name, province=province).first()
+                if university:
+                    university.rank = university_rank
+                    university.save()
                 else:
                     unmatched_rows.append(index)
             else:
