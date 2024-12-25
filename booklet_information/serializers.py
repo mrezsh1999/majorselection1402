@@ -19,7 +19,7 @@ from users.models import Student
 
 
 class InfoSerializer(serializers.ModelSerializer):
-    university = serializers.SlugRelatedField(slug_field="title", read_only=True)
+    university = serializers.SerializerMethodField("get_university")
     major_title = serializers.SerializerMethodField("get_major_title")
     course = serializers.SerializerMethodField("get_course")
     exam_based = serializers.SerializerMethodField("get_exam_based")
@@ -29,6 +29,8 @@ class InfoSerializer(serializers.ModelSerializer):
     admission = serializers.SerializerMethodField("get_admission")
 
     def get_university(self, obj):
+        if obj.boursie_description:
+            return obj.university.title + '({})'.format(obj.boursie_description)
         return obj.university.title
 
     def get_major_title(self, obj):
@@ -242,6 +244,8 @@ class MajorSelectionListSerializer(serializers.ModelSerializer):
         return obj.booklet_row.major.id
 
     def get_university(self, obj):
+        if obj.booklet_row.boursie_description:
+            return obj.booklet_row.university.title + '({})'.format(obj.booklet_row.boursie_description)
         return obj.booklet_row.university.title
 
     def get_province(self, obj):
@@ -367,7 +371,7 @@ class MajorSelectionDeleteSerializer(serializers.ModelSerializer):
 
 
 class MajorSelectionResetSerializer(serializers.ModelSerializer):
-    university = serializers.SlugRelatedField(slug_field="title", read_only=True)
+    university = serializers.SerializerMethodField('get_university')
     province = serializers.SerializerMethodField("get_province")
     major_title = serializers.SerializerMethodField("get_major_title")
     course = serializers.SerializerMethodField("get_major_course")
@@ -376,6 +380,11 @@ class MajorSelectionResetSerializer(serializers.ModelSerializer):
     field_of_study = serializers.SerializerMethodField("get_field_of_study")
     admission = serializers.SerializerMethodField("get_admission")
     rank = serializers.SerializerMethodField("get_rank")
+
+    def get_university(self, obj):
+        if obj.boursie_description:
+            return obj.university.title + '({})'.format(obj.boursie_description)
+        return obj.university.title
 
     def get_province(self, obj):
         return obj.university.province.title

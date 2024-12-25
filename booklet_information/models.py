@@ -40,6 +40,9 @@ class University(models.Model):
     title = models.CharField(max_length=512)
     province = models.ForeignKey(Province, on_delete=models.PROTECT)
     rank = models.PositiveSmallIntegerField(blank=True, null=True)
+    rank_riazi = models.PositiveSmallIntegerField(blank=True, null=True)
+    rank_tajrobi = models.PositiveSmallIntegerField(blank=True, null=True)
+    rank_ensani = models.PositiveSmallIntegerField(blank=True, null=True)
 
     def __str__(self):
         return self.title
@@ -61,6 +64,8 @@ class BookletRow(models.Model):
     AZADTAMAMVAGHT = 8
     FARHANGIAN = 9
     BOMI = 10
+    BOURSIE = 11
+    BEHYARI = 12
 
     COURSE = (
         (DAILY, _("روزانه")),
@@ -74,6 +79,8 @@ class BookletRow(models.Model):
         (AZADTAMAMVAGHT, _("آزاد تمام وقت")),
         (FARHANGIAN, _("فرهنگیان")),
         (BOMI, _("بومی")),
+        (BOURSIE, _("بورسیه")),
+        (BEHYARI, _("بهیاری")),
     )
 
     GENDER = (
@@ -97,6 +104,8 @@ class BookletRow(models.Model):
 
     university = models.ForeignKey(University, on_delete=models.PROTECT)
     major = models.ForeignKey(Major, on_delete=models.PROTECT)
+
+    boursie_description = models.CharField(max_length=512, blank=True, null=True)
 
     def __str__(self):
         return "{} {}".format(self.major.title, self.university.title)

@@ -15,7 +15,7 @@ from booklet_information.models import Province
 from django.db import models
 from majorselection1402 import settings
 from django.db.models import Count
-from users.models import Student, User, Advisor, ReportCard, Manager
+from users.models import Student, User, Advisor, ReportCard, Manager, School
 from users.serializers import (
     StudentLoginSerializer,
     AdvisorLoginSerializer,
@@ -39,6 +39,22 @@ from users.serializers import (
     UserMbtiResultSerializer
 )
 
+
+def convert_persian_digits_to_int(input_str):
+    num_dic = {
+        '۰': '0',
+        '۱': '1',
+        '۲': '2',
+        '۳': '3',
+        '۴': '4',
+        '۵': '5',
+        '۶': '6',
+        '۷': '7',
+        '۸': '8',
+        '۹': '9',
+    }
+
+    return str(''.join(num_dic.get(char, char) for char in input_str))
 
 class IsStudent(BasePermission):
     def has_permission(self, request, view):
@@ -105,6 +121,7 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewS
     @action(detail=False, methods=["POST"], permission_classes=[AllowAny])
     def login(self, request):
         mobile = request.data.get("mobile")
+        mobile = convert_persian_digits_to_int(mobile)
         try:
             user = User.objects.get(mobile=mobile)
             otp_key = pyotp.random_base32()
@@ -112,7 +129,7 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewS
             user.otp_key = otp_key
             user.save()
             # UserViewSet.OTP = pyotp.TOTP(otp_key, interval=120, digits=4)
-            # send_otp(mobile, OTP.now())
+            send_otp(mobile, OTP.now())
             return Response(
                 {"message": "OTP was sent", "otp": OTP.now()},
                 status=status.HTTP_200_OK,
@@ -127,10 +144,11 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewS
     @action(detail=False, methods=["POST"], permission_classes=[AllowAny])
     def verify(self, request):
         mobile = request.data.get("mobile")
+        mobile = convert_persian_digits_to_int(mobile)
         if User.objects.filter(mobile=mobile, is_student=True):
             otp_key = User.objects.get(mobile=mobile).otp_key
             OTP = pyotp.TOTP(otp_key, interval=120, digits=4)
-            if OTP.verify(request.data["otp"]):
+            if OTP.verify(convert_persian_digits_to_int(request.data["otp"])):
                 student = Student.objects.get(mobile=mobile)
                 serializer = StudentLoginSerializer(student)
                 return Response(serializer.data, status=status.HTTP_200_OK)
@@ -143,7 +161,7 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewS
         elif User.objects.filter(mobile=mobile, is_advisor=True):
             otp_key = User.objects.get(mobile=mobile).otp_key
             OTP = pyotp.TOTP(otp_key, interval=120, digits=4)
-            if OTP.verify(request.data["otp"]):
+            if OTP.verify(convert_persian_digits_to_int(request.data["otp"])):
                 advisor = Advisor.objects.get(mobile=mobile)
                 serializer = AdvisorLoginSerializer(advisor)
                 return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -155,7 +173,7 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewS
         elif User.objects.filter(mobile=mobile, is_manager=True):
             otp_key = User.objects.get(mobile=mobile).otp_key
             OTP = pyotp.TOTP(otp_key, interval=120, digits=4)
-            if OTP.verify(request.data["otp"]):
+            if OTP.verify(convert_persian_digits_to_int(request.data["otp"])):
                 manager = Manager.objects.get(mobile=mobile)
                 serializer = AdvisorLoginSerializer(manager)
                 return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -175,10 +193,155 @@ class UserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewS
             status=status.HTTP_204_NO_CONTENT,
         )
     
+    @action(detail=False, methods=["GET"], permission_classes=[AllowAny])
+    def generate_students_txt(self, request):
+        # Create a dictionary to store student names by school
+        schools_with_students = {}
+
+        # Get all schools
+        schools = School.objects.all()
+
+        # Iterate through each school and fetch students
+        for school in schools:
+            students = Student.objects.filter(school=school)
+            student_names = [student.name for student in students]
+
+            # Add school and its student names to the dictionary
+            if student_names:
+                schools_with_students[school.title] = student_names
+
+        # Create a response object to write the file content
+        response = HttpResponse(content_type='text/plain')
+        response['Content-Disposition'] = 'attachment; filename="school_students.txt"'
+
+        # Write the school and student names into the file
+        for school, students in schools_with_students.items():
+            response.write(f"School: {school}\n")
+            response.write("\n".join(students))
+            response.write("\n\n")
+
+        return response
+    
+    @action(detail=False, methods=["GET"], permission_classes=[AllowAny])
+    def export_students_xlsx(self, request):
+        # Get students where is_state_choose_booklet_rows_done is True
+        students = Student.objects.filter(is_state_choose_booklet_rows_done=True).select_related(
+            'student_advisor__manager_field', 'school'
+        )
+
+        # Create list for storing data
+        student_data = []
+
+        for student in students:
+            advisor_name = student.student_advisor.name if student.student_advisor else ""
+            manager_name = student.student_advisor.manager_field.name if student.student_advisor and student.student_advisor.manager_field else ""
+            school_name = student.school.title if student.school else ""
+            student_data.append([
+                student.name,
+                advisor_name,
+                manager_name,
+                school_name
+            ])
+
+        # Define column names
+        columns = ['دانش آموز', 'مشاور', 'مدیر', 'مجموعه آموزشی']
+
+        # Create DataFrame
+        df = pd.DataFrame(student_data, columns=columns)
+
+        # Create a response object
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = 'attachment; filename=students.xlsx'
+
+        # Write the DataFrame to the response using ExcelWriter
+        with pd.ExcelWriter(response, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Students')
+
+        return response
+    
+    @action(detail=False, methods=["GET"], permission_classes=[AllowAny])
+    def export_students_xlsx_end(self, request):
+        # Get students where is_state_choose_booklet_rows_done is True
+        students = Student.objects.filter(process_end_time__isnull=False).select_related(
+            'student_advisor__manager_field', 'school'
+        )
+
+        # Create list for storing data
+        student_data = []
+
+        for student in students:
+            advisor_name = student.student_advisor.name if student.student_advisor else ""
+            manager_name = student.student_advisor.manager_field.name if student.student_advisor and student.student_advisor.manager_field else ""
+            school_name = student.school.title if student.school else ""
+            student_data.append([
+                student.name,
+                advisor_name,
+                manager_name,
+                school_name
+            ])
+
+        # Define column names
+        columns = ['دانش آموز', 'مشاور', 'مدیر', 'مجموعه آموزشی']
+
+        # Create DataFrame
+        df = pd.DataFrame(student_data, columns=columns)
+
+        # Create a response object
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = 'attachment; filename=students.xlsx'
+
+        # Write the DataFrame to the response using ExcelWriter
+        with pd.ExcelWriter(response, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Students')
+
+        return response
+    
+
+    @action(detail=False, methods=["GET"], permission_classes=[AllowAny])
+    def export_students_xlsx_full(self, request):
+        # Get all students
+        students = Student.objects.select_related('student_advisor__manager_field', 'school')
+
+        # Create list for storing data
+        student_data = []
+
+        for student in students:
+            advisor_name = student.student_advisor.name if student.student_advisor else ""
+            manager_name = student.student_advisor.manager_field.name if student.student_advisor and student.student_advisor.manager_field else ""
+            school_name = student.school.title if student.school else ""
+            is_state_choose_booklet_rows_done = "بله" if student.is_state_choose_booklet_rows_done else "خیر"
+            process_end_time_status = "بله" if student.process_end_time else "خیر"
+
+            student_data.append([
+                student.name,
+                advisor_name,
+                manager_name,
+                school_name,
+                is_state_choose_booklet_rows_done,
+                process_end_time_status
+            ])
+
+        # Define column names
+        columns = ['دانش آموز', 'مشاور', 'مدیر', 'مجموعه آموزشی', 'تکمیل فرایند', 'فرایند تکمیل ولی انتخاب رشته خالی']
+
+        # Create DataFrame
+        df = pd.DataFrame(student_data, columns=columns)
+
+        # Create a response object
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = 'attachment; filename=all_students.xlsx'
+
+        # Write the DataFrame to the response using ExcelWriter
+        with pd.ExcelWriter(response, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='All Students')
+
+        return response
+
     @action(detail=False, methods=["POST"], permission_classes=[AllowAny])
     def create_student(self, request):
         if request.method == 'POST':
-            serializer = StudentCreationSerializer(data=request.data)
+            # Pass the request context to the serializer
+            serializer = StudentCreationSerializer(data=request.data, context={'request': request})
             if serializer.is_valid():
                 serializer.save()
                 return Response(serializer.data, status=status.HTTP_201_CREATED)

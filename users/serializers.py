@@ -44,9 +44,21 @@ class AdvisorLoginSerializer(serializers.ModelSerializer):
     user_type = serializers.SerializerMethodField("get_user_type")
 
     def get_token(self, obj):
-        Token.objects.filter(user=obj).delete()
-        token = Token.objects.create(user=obj)
-        return token.key
+        # Check if a token already exists for the user
+        existing_token = Token.objects.filter(user=obj).first()
+
+        if existing_token:
+            # If a token exists, return the existing token key without deleting it
+            return existing_token.key
+        else:
+            # If there is no token for the user, create a new one
+            token = Token.objects.create(user=obj)
+            return token.key
+        
+    # def get_token(self, obj):
+    #     Token.objects.filter(user=obj).delete()
+    #     token = Token.objects.create(user=obj)
+    #     return token.key
 
     def get_user_type(self, obj):
         if obj.is_advisor:
@@ -323,21 +335,39 @@ class AdvisorUploadSerializer(serializers.ModelSerializer):
 
 class StudentCreationSerializer(serializers.ModelSerializer):
     report_card = ReportCardSerializer(required=False, allow_null=True)
+    
+    # Add is_student to serializer fields
+    is_student = serializers.BooleanField(default=True, read_only=True)
 
     class Meta:
         model = Student
         fields = [
             'first_name', 'last_name', 'mobile', 'gender',
-            'field_of_study', 'province', 'student_advisor', 
-            'report_card'
+            'field_of_study', 'province', 'student_advisor',
+            'report_card', 'is_student'
         ]
 
     def create(self, validated_data):
         report_card_data = validated_data.pop('report_card', None)
+        
+        # Ensure is_student is always True
+        validated_data['is_student'] = True
+        
+        # Get the manager and school from the request context
+        manager = Manager.objects.get(id=self.context['request'].user.id)
+        school = manager.school_set.first()
+        
+        # Set the school for the student if available
+        if school:
+            validated_data['school'] = school
+        else:
+            raise serializers.ValidationError({'school': 'Manager does not have an associated school'})
+        
         student = Student.objects.create(**validated_data)
         if report_card_data and report_card_data.get('report_card_file'):
             ReportCard.objects.create(student=student, **report_card_data)
         return student
+
 
 class ReportCardEditSerializer(serializers.ModelSerializer):
     class Meta:
@@ -382,7 +412,7 @@ class AdvisorCreationSerializer(serializers.Serializer):
         student_ids = validated_data.pop('student_ids', [])
         user = self.context['request'].user
         manager = Manager.objects.get(mobile=user.mobile)
-        advisor = Advisor.objects.create(manager_field=manager, **validated_data)
+        advisor = Advisor.objects.create(manager_field=manager, is_advisor=True, **validated_data)
 
         if student_ids:
             students = Student.objects.filter(id__in=student_ids)

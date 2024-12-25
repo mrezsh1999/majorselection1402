@@ -98,6 +98,7 @@ admin.site.register(SelectDefaultMajor, SelectDefaultMajorAdmin)
 # admin.site.register(MajorSelection, MajorSelectionAdmin)
 class MajorSelectionAdmin(admin.ModelAdmin):
     raw_id_fields = ('booklet_row', 'student')
+    search_fields = ["student__last_name", "student__first_name"]
     # ordering = ['rank']
     # list_display = ['rank', 'booklet_row', 'student']
     # list_filter = ['student']
