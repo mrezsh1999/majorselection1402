@@ -14,7 +14,7 @@ from rest_framework import mixins, filters, status
 from rest_framework.permissions import IsAuthenticated
 import time
 from django.utils import timezone
-from django.db.models import Case, When, Value, BooleanField
+from django.db.models import Case, When, Value, BooleanField, CharField
 import pandas as pd
 from fuzzywuzzy import fuzz
 from booklet_information.models import (
@@ -27,7 +27,7 @@ from booklet_information.models import (
     University,
     SelectProvince,
     MajorSelection,
-    MajorSelectionNode
+    MajorSelectionNode,
 )
 from booklet_information.serializers import (
     InfoSerializer,
@@ -126,17 +126,52 @@ class InfoViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, GenericViewSet
         "major__title",
         "university__title",
         "university__province__title",
+        "description",
+        "course_display",  # 👈 annotated fields
+        "gender_display",
+        "admission_display",
+        "exam_based_display",
     ]
 
+    def _with_displays(self, qs):
+        # turn lazy gettext labels into plain strings
+        COURSE_MAP = dict((k, str(v)) for k, v in BookletRow.COURSE)
+        GENDER_MAP = {0: "دختر", 1: "پسر", 2: "هردو"}
+        ADMISSION_MAP = {0: "اول", 1: "دوم"}
+        EXAM_MAP = {True: "با آزمون", False: "صرفا با سوابق تحصیلی"}
+
+        return qs.annotate(
+            course_display=Case(
+                *[When(course=k, then=Value(v)) for k, v in COURSE_MAP.items()],
+                output_field=CharField(),
+            ),
+            gender_display=Case(
+                *[When(gender=k, then=Value(v)) for k, v in GENDER_MAP.items()],
+                output_field=CharField(),
+            ),
+            admission_display=Case(
+                *[When(admission=k, then=Value(v)) for k, v in ADMISSION_MAP.items()],
+                output_field=CharField(),
+            ),
+            exam_based_display=Case(
+                *[When(exam_based=k, then=Value(v)) for k, v in EXAM_MAP.items()],
+                output_field=CharField(),
+            ),
+        )
+
     def get_queryset(self):
-        if(self.request.GET.get("student_id") != "undefined"):
-            student_gender = Student.objects.get(id=self.request.GET.get("student_id")).gender 
-            genders = [1, 2] if student_gender else [0, 2]
-            return BookletRow.objects.filter(major__field_of_study=Student.objects.get(id=self.request.GET.get("student_id")).field_of_study, gender__in=genders)
-        else:
-            return BookletRow.objects.all()
+        qs = BookletRow.objects.all()
 
+        student_id = self.request.GET.get("student_id")
+        if student_id and student_id != "undefined":
+            student = Student.objects.get(id=student_id)
+            genders = [1, 2] if student.gender else [0, 2]
+            qs = qs.filter(
+                major__field_of_study=student.field_of_study,
+                gender__in=genders,
+            )
 
+        return self._with_displays(qs)
 
     # def create(self, request, *args, **kwargs):
     #     list10 = []
@@ -247,11 +282,13 @@ class InfoViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, GenericViewSet
 
     def create(self, request, *args, **kwargs):
         excel_file = request.data.get("file")
-        field_of_study = request.data.get("field_of_study")  # Get field of study from the request body
-        
+        field_of_study = request.data.get(
+            "field_of_study"
+        )  # Get field of study from the request body
+
         # Read the Excel file using pandas
-        df = pd.read_excel(excel_file, sheet_name='Sheet1')
-        
+        df = pd.read_excel(excel_file, sheet_name="Sheet1")
+
         course_map = {
             "روزانه": BookletRow.DAILY,
             "نوبت دوم": BookletRow.NIGHTLY,
@@ -267,23 +304,19 @@ class InfoViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, GenericViewSet
             "بورسیه": BookletRow.BOURSIE,
         }
 
-        gender_map = {
-            "مرد": 1,
-            "زن": 0,
-            "هردو": 2
-        }
+        gender_map = {"مرد": 1, "زن": 0, "هردو": 2}
 
-        admission_map = {
-            "اول": 0,
-            "دوم": 1
-        }
+        admission_map = {"اول": 0, "دوم": 1}
 
         for index, row in df.iterrows():
             try:
                 # Check for missing or empty values
                 if row.isnull().any():
-                    raise ValueError(f"Row {index + 1} is empty or has missing values: {row.to_dict()}")
+                    raise ValueError(
+                        f"Row {index + 1} is empty or has missing values: {row.to_dict()}"
+                    )
 
+                description = row[8] if len(row) > 8 else ""
                 province_name = row[7]
                 university_name = row[6]
                 major_name = row[2]
@@ -294,22 +327,32 @@ class InfoViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, GenericViewSet
                 admission = admission_map.get(row[1])
 
                 if gender is None:
-                    raise ValueError(f"Invalid gender value in row {index + 1}: {row[0]}")
+                    raise ValueError(
+                        f"Invalid gender value in row {index + 1}: {row[0]}"
+                    )
 
                 if admission is None:
-                    raise ValueError(f"Invalid admission value in row {index + 1}: {row[1]}")
+                    raise ValueError(
+                        f"Invalid admission value in row {index + 1}: {row[1]}"
+                    )
 
                 # Get the related Province; if not found, raise an error
                 try:
                     province = Province.objects.get(title=province_name)
                 except Province.DoesNotExist:
-                    raise ValueError(f"Province '{province_name}' does not exist in row {index + 1}")
+                    raise ValueError(
+                        f"Province '{province_name}' does not exist in row {index + 1}"
+                    )
 
                 # Get or create the related Major, now including field_of_study from the request
-                major, _ = Major.objects.get_or_create(title=major_name, field_of_study=field_of_study)
+                major, _ = Major.objects.get_or_create(
+                    title=major_name, field_of_study=field_of_study
+                )
 
                 # Get or create the related University
-                university, _ = University.objects.get_or_create(title=university_name, province=province)
+                university, _ = University.objects.get_or_create(
+                    title=university_name, province=province
+                )
 
                 # Check if a BookletRow with the same major_code already exists
                 # booklet_row, created = BookletRow.objects.update_or_create(
@@ -328,13 +371,16 @@ class InfoViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, GenericViewSet
                     major_code=major_code,
                     major__field_of_study=field_of_study,  # Ensure it matches the field of study
                     defaults={
-                        'exam_based': exam_based,
-                        'course': course_map.get(course_name, BookletRow.DAILY),  # Default to 'روزانه' if not found
-                        'university': university,
-                        'gender': gender,
-                        'major': major,
-                        'admission': admission,
-                    }
+                        "exam_based": exam_based,
+                        "course": course_map.get(
+                            course_name, BookletRow.DAILY
+                        ),  # Default to 'روزانه' if not found
+                        "university": university,
+                        "gender": gender,
+                        "major": major,
+                        "admission": admission,
+                        "description": description,
+                    },
                 )
 
                 if created:
@@ -347,13 +393,12 @@ class InfoViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, GenericViewSet
 
         return Response("ok")
 
-
     @action(detail=False, methods=["PUT"])
     def update_boursie(self, request, *args, **kwargs):
         excel_file = request.data.get("file")
-        
+
         # Read the Excel file using pandas
-        df = pd.read_excel(excel_file, sheet_name='Sheet1')
+        df = pd.read_excel(excel_file, sheet_name="Sheet1")
 
         course_map = {
             "روزانه": BookletRow.DAILY,
@@ -373,17 +418,23 @@ class InfoViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, GenericViewSet
         for index, row in df.iterrows():
             try:
                 major_code = row[0]  # Assuming 'major_code' is the first column
-                boursie_description = row[1]  # Assuming 'boursie_description' is the second column
+                boursie_description = row[
+                    1
+                ]  # Assuming 'boursie_description' is the second column
                 # Skip update if boursie_description is null
                 if pd.isnull(boursie_description):
-                    print(f"Skipping row {index + 1} because boursie_description is null")
+                    print(
+                        f"Skipping row {index + 1} because boursie_description is null"
+                    )
                     continue
 
                 # Find all BookletRow objects with the given major_code
                 booklet_rows = BookletRow.objects.filter(major_code=major_code)
 
                 if not booklet_rows.exists():
-                    print(f"No BookletRows found with major_code {major_code} in row {index + 1}")
+                    print(
+                        f"No BookletRows found with major_code {major_code} in row {index + 1}"
+                    )
                     continue
 
                 # Update each BookletRow with the new boursie_description and set course to 'بورسیه'
@@ -397,55 +448,62 @@ class InfoViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, GenericViewSet
                 return Response(f"Error processing row {index + 1}: {e}", status=400)
 
         return Response("ok")
-    
+
     @action(detail=False, methods=["DELETE"])
     def delete(self, request):
         BookletRow.objects.all().delete()
         University.objects.all().delete()
         Major.objects.all().delete()
         return Response("ok")
-    
+
     @action(detail=False, methods=["POST"])
     def update_university_ranks(self, request, *args, **kwargs):
-        file = request.FILES.get('file')
+        file = request.FILES.get("file")
         field_of_study = request.data.get("field_of_study")
         if not file:
-            return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST
+            )
 
         # Process the uploaded Excel file with pandas
         try:
             df = pd.read_excel(file)
         except Exception as e:
-            return Response({"error": f"Failed to read Excel file: {e}"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": f"Failed to read Excel file: {e}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Ensure the dataframe has the expected columns
-        expected_columns = ['استان', 'نام دانشگاه', 'رنک دانشگاه']
+        expected_columns = ["استان", "نام دانشگاه", "رنک دانشگاه"]
         if not all(column in df.columns for column in expected_columns):
-            return Response({"error": "Excel file must contain the correct columns"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "Excel file must contain the correct columns"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         unmatched_rows = []
         # Iterate over the rows in the dataframe
         for index, row in df.iterrows():
-            university_rank = row['رنک دانشگاه']
-            
+            university_rank = row["رنک دانشگاه"]
+
             # Skip the row if the university rank is empty or NaN
             if pd.isna(university_rank):
                 continue
 
-            province_title = row['استان'].strip()
-            university_name = row['نام دانشگاه'].strip()
+            province_title = row["استان"].strip()
+            university_name = row["نام دانشگاه"].strip()
 
             # Find or create the province
             province = get_object_or_404(Province, title=province_title)
 
-
             if province:
                 # Get all universities in the given province
                 universities = University.objects.filter(province=province)
-                
+
                 # Initialize a variable to track the best match
                 best_match = None
                 highest_similarity = 0
-                
+
                 # Check each university in the province for the best fuzzy match
                 for university in universities:
                     similarity = fuzz.ratio(university.title, university_name)
@@ -466,16 +524,17 @@ class InfoViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, GenericViewSet
                     unmatched_rows.append(index)
             else:
                 unmatched_rows.append(index)
-                
+
         print(f"Unmatched row indexes: {unmatched_rows}")
 
-        return Response({"message": "Universities updated successfully"}, status=status.HTTP_200_OK)
-
+        return Response(
+            {"message": "Universities updated successfully"}, status=status.HTTP_200_OK
+        )
 
     @action(detail=False, methods=["POST", "GET"])
     def booklet_rows_query(self, request):
         student_id = request.GET.get("student_id")
-        student_gender = Student.objects.get(id=student_id).gender 
+        student_gender = Student.objects.get(id=student_id).gender
         genders = [1, 2] if student_gender else [0, 2]
         if request.method == "POST":
             all_rows = []
@@ -484,7 +543,7 @@ class InfoViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, GenericViewSet
             for data in request.data:
                 major_index += 1
                 province_index = 0
-                if(data["major"] != 1000):
+                if data["major"] != 1000:
                     for province in data["select_province"]:
                         province_index += 1
                         select_province = SelectProvince.objects.get_or_create(
@@ -497,12 +556,14 @@ class InfoViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, GenericViewSet
                                 defaults={"index": major_index},
                             )
                         )
-                        select_province_for_major[0].select_province.add(select_province[0])
+                        select_province_for_major[0].select_province.add(
+                            select_province[0]
+                        )
                         daily_nightly_list = list(
                             BookletRow.objects.filter(
                                 major_id=data["major"],
                                 university__province_id=province["province"],
-                                gender__in=genders
+                                gender__in=genders,
                             ).order_by("university__rank")
                         )
                         all_rows += daily_nightly_list
@@ -520,15 +581,17 @@ class InfoViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, GenericViewSet
                                 defaults={"index": major_index},
                             )
                         )
-                        select_province_for_major[0].select_province.add(select_province[0])
+                        select_province_for_major[0].select_province.add(
+                            select_province[0]
+                        )
                         daily_nightly_list = list(
                             BookletRow.objects.filter(
                                 major_id=data["major"],
                                 university__province_id=province.id,
-                                gender__in=genders
+                                gender__in=genders,
                             ).order_by("university__rank")
                         )
-                        all_rows += daily_nightly_list  
+                        all_rows += daily_nightly_list
 
             # student = Student.objects.get(id=student_id)
             # student.is_state_choose_booklet_rows = True
@@ -550,7 +613,9 @@ class SelectDefaultProvinceViewSet(mixins.ListModelMixin, GenericViewSet):
 
     def get_queryset(self):
         student_id = self.request.GET.get("student_id")
-        return SelectDefaultProvince.objects.filter(student_id=student_id).order_by('index')
+        return SelectDefaultProvince.objects.filter(student_id=student_id).order_by(
+            "index"
+        )
 
 
 class SelectProvinceForMajorViewSet(mixins.CreateModelMixin, GenericViewSet):
@@ -575,7 +640,7 @@ class SelectProvinceForMajorViewSet(mixins.CreateModelMixin, GenericViewSet):
                 )
                 x = major
                 select_province = []
-                if(major["major"] != 1000):
+                if major["major"] != 1000:
                     for province in request.data[1]:
                         province_index += 1
                         SelectDefaultProvince.objects.get_or_create(
@@ -596,7 +661,7 @@ class SelectProvinceForMajorViewSet(mixins.CreateModelMixin, GenericViewSet):
                             province_id=province.id,
                             student_id=student_id,
                         )
-                        select_province.append({'province':province.id})
+                        select_province.append({"province": province.id})
                         if province_index == len(request.data[1]):
                             x["select_province"] = select_province
                             x["student"] = student_id
@@ -655,11 +720,13 @@ class UniversityViewSet(mixins.ListModelMixin, GenericViewSet):
     @action(detail=False, methods=["PUT"])
     def update_1000(self, request):
         # Update all universities with a null rank to have a rank of 1000
-        universities_updated = University.objects.filter(rank__isnull=True).update(rank=1000)
-        
+        universities_updated = University.objects.filter(rank__isnull=True).update(
+            rank=1000
+        )
+
         return Response(
             {"message": f"{universities_updated} universities updated successfully."},
-            status=status.HTTP_200_OK
+            status=status.HTTP_200_OK,
         )
 
 
@@ -683,40 +750,51 @@ class MajorSelectionViewSet(
     #     student_id = self.request.GET.get("student_id")
     #     return MajorSelection.objects.filter(student_id=student_id).order_by("rank")
     def get_queryset(self):
-        student_id = self.request.GET.get('student_id')
-        current_node = MajorSelection.objects.select_related('booklet_row').filter(student_id=student_id,
-                                                                                   head=True).first()
+        student_id = self.request.GET.get("student_id")
+        current_node = (
+            MajorSelection.objects.select_related("booklet_row")
+            .filter(student_id=student_id, head=True)
+            .first()
+        )
         rank_counter = 0
         major_selection_list = []
         while current_node:
             current_node.rank_counter = rank_counter + 1
             major_selection_list.append(current_node)
-            current_node = MajorSelectionNode.objects.prefetch_related('major_selection').get(
-                major_selection=current_node).next_major_selection
+            current_node = (
+                MajorSelectionNode.objects.prefetch_related("major_selection")
+                .get(major_selection=current_node)
+                .next_major_selection
+            )
             rank_counter += 1
-        
+
         return major_selection_list
 
     def create(self, request, *args, **kwargs):
-        student_id = request.GET.get('student_id')
-        serializer = self.get_serializer(data=request.data, many=True, context={'student_id': request.GET.get('student_id')})
+        student_id = request.GET.get("student_id")
+        serializer = self.get_serializer(
+            data=request.data,
+            many=True,
+            context={"student_id": request.GET.get("student_id")},
+        )
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         headers = self.get_success_headers(serializer.data)
         if request.user.is_advisor:
-                    Student.objects.filter(id=student_id).update(
-                        is_state_choose_booklet_rows_done=True,
-                        process_end_time = timezone.now()
-                    )
+            Student.objects.filter(id=student_id).update(
+                is_state_choose_booklet_rows_done=True, process_end_time=timezone.now()
+            )
         elif request.user.is_manager:
-                    Student.objects.filter(id=student_id).update(
-                        is_state_final_approval=Case(
-                            When(is_state_final_approval=True, then=Value(False)),
-                            When(is_state_final_approval=False, then=Value(True)),
-                            output_field=BooleanField()
-                        )
-                    )
-        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+            Student.objects.filter(id=student_id).update(
+                is_state_final_approval=Case(
+                    When(is_state_final_approval=True, then=Value(False)),
+                    When(is_state_final_approval=False, then=Value(True)),
+                    output_field=BooleanField(),
+                )
+            )
+        return Response(
+            serializer.data, status=status.HTTP_201_CREATED, headers=headers
+        )
         # serializer = self.get_serializer(
         #     data=request.data,
         #     many=True,
@@ -748,24 +826,29 @@ class MajorSelectionViewSet(
         #                 )
         #             )
 
-            # Use select_related to fetch related objects in advance
-            # queryset = self.queryset.select_related("related_model")
+        # Use select_related to fetch related objects in advance
+        # queryset = self.queryset.select_related("related_model")
 
-            # # Use prefetch_related to fetch related objects in advance
-            # queryset = queryset.prefetch_related("related_objects")
+        # # Use prefetch_related to fetch related objects in advance
+        # queryset = queryset.prefetch_related("related_objects")
 
-            # # Serialize queryset
-            # serialized_data = self.get_serializer(queryset, many=True).data
+        # # Serialize queryset
+        # serialized_data = self.get_serializer(queryset, many=True).data
 
         #     return Response("ok", status=status.HTTP_201_CREATED)
         # else:
         #     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
     def update(self, request, *args, **kwargs):
-        student_id = request.GET.get('student_id')
-        current_node = MajorSelectionNode.objects.select_related('major_selection').filter(
-            major_selection_id=kwargs.get('pk'), major_selection__student_id=student_id).first()
+        student_id = request.GET.get("student_id")
+        current_node = (
+            MajorSelectionNode.objects.select_related("major_selection")
+            .filter(
+                major_selection_id=kwargs.get("pk"),
+                major_selection__student_id=student_id,
+            )
+            .first()
+        )
         next_node = current_node.next_major_selection
 
         with transaction.atomic():
@@ -773,11 +856,15 @@ class MajorSelectionViewSet(
                 next_node.head = True
                 next_node.save()
 
-                prev_selected_node = request.GET.get('prev_selected_node')
-                prev_new_position = MajorSelectionNode.objects.get(major_selection_id=prev_selected_node)
+                prev_selected_node = request.GET.get("prev_selected_node")
+                prev_new_position = MajorSelectionNode.objects.get(
+                    major_selection_id=prev_selected_node
+                )
                 next_new_position = prev_new_position.next_major_selection
 
-                prev_position = MajorSelectionNode.objects.filter(major_selection=current_node.major_selection).first()
+                prev_position = MajorSelectionNode.objects.filter(
+                    major_selection=current_node.major_selection
+                ).first()
                 prev_position.next_major_selection = next_new_position
                 prev_position.major_selection.head = False
                 prev_position.major_selection.save()
@@ -787,49 +874,73 @@ class MajorSelectionViewSet(
                 prev_new_position.save()
             else:
                 prev_major_selection = MajorSelectionNode.objects.get(
-                    next_major_selection=current_node.major_selection).major_selection
-                prev_node = MajorSelectionNode.objects.get(major_selection=prev_major_selection)
+                    next_major_selection=current_node.major_selection
+                ).major_selection
+                prev_node = MajorSelectionNode.objects.get(
+                    major_selection=prev_major_selection
+                )
                 prev_node.next_major_selection = next_node
                 prev_node.save()
 
-                prev_selected_node = request.GET.get('prev_selected_node')
-                if prev_selected_node == '0':
-                    prev_new_position = MajorSelection.objects.filter(student_id=student_id, head=True).first()
+                prev_selected_node = request.GET.get("prev_selected_node")
+                if prev_selected_node == "0":
+                    prev_new_position = MajorSelection.objects.filter(
+                        student_id=student_id, head=True
+                    ).first()
                     prev_position = MajorSelectionNode.objects.filter(
-                        major_selection=current_node.major_selection).first()
-                    MajorSelectionNode.objects.filter(major_selection=current_node.major_selection).update(
-                        next_major_selection=prev_new_position)
-                    MajorSelection.objects.filter(id=prev_new_position.id).update(head=False)
-                    MajorSelection.objects.filter(id=prev_position.major_selection.id).update(head=True)
+                        major_selection=current_node.major_selection
+                    ).first()
+                    MajorSelectionNode.objects.filter(
+                        major_selection=current_node.major_selection
+                    ).update(next_major_selection=prev_new_position)
+                    MajorSelection.objects.filter(id=prev_new_position.id).update(
+                        head=False
+                    )
+                    MajorSelection.objects.filter(
+                        id=prev_position.major_selection.id
+                    ).update(head=True)
                 else:
-                    prev_new_position = MajorSelectionNode.objects.get(major_selection_id=prev_selected_node)
+                    prev_new_position = MajorSelectionNode.objects.get(
+                        major_selection_id=prev_selected_node
+                    )
                     next_new_position = prev_new_position.next_major_selection
 
                     prev_position = MajorSelectionNode.objects.filter(
-                        major_selection=current_node.major_selection).first()
+                        major_selection=current_node.major_selection
+                    ).first()
                     prev_position.next_major_selection = next_new_position
                     prev_position.save()
 
-                    prev_new_position.next_major_selection = current_node.major_selection
+                    prev_new_position.next_major_selection = (
+                        current_node.major_selection
+                    )
                     prev_new_position.save()
 
-        return Response('ok')
-    
+        return Response("ok")
+
     def destroy(self, request, *args, **kwargs):
-        student_id = request.GET.get('student_id')
-        current_node = MajorSelection.objects.filter(booklet_row_id=kwargs.get('pk'), student_id=student_id).first()
-        next_node = MajorSelectionNode.objects.get(major_selection=current_node).next_major_selection
+        student_id = request.GET.get("student_id")
+        current_node = MajorSelection.objects.filter(
+            booklet_row_id=kwargs.get("pk"), student_id=student_id
+        ).first()
+        next_node = MajorSelectionNode.objects.get(
+            major_selection=current_node
+        ).next_major_selection
         if current_node.head:
             current_node.delete()
             next_node.head = True
             next_node.save()
         else:
-            prev_major_selection = MajorSelectionNode.objects.get(next_major_selection=current_node).major_selection
-            prev_node = MajorSelectionNode.objects.get(major_selection=prev_major_selection)
+            prev_major_selection = MajorSelectionNode.objects.get(
+                next_major_selection=current_node
+            ).major_selection
+            prev_node = MajorSelectionNode.objects.get(
+                major_selection=prev_major_selection
+            )
             prev_node.next_major_selection = next_node
             prev_node.save()
             current_node.delete()
-        return Response('ok')
+        return Response("ok")
         # instance = MajorSelection.objects.filter(id__in=kwargs["pk"].split(","))
         # student = MajorSelection.objects.get(id=kwargs["pk"].split(",")[0]).student
         # self.perform_destroy(instance)
@@ -846,21 +957,25 @@ class MajorSelectionViewSet(
     def bulk_delete_behyari(self, request, *args, **kwargs):
         # Define the filter criteria for BEHYARI course (course=12)
         filter_criteria = {
-            'booklet_row__course': BookletRow.BEHYARI  # course code for BEHYARI
+            "booklet_row__course": BookletRow.BEHYARI  # course code for BEHYARI
         }
 
         names = []
-        
+
         with transaction.atomic():
             while True:
                 # Get the first major selection that matches the criteria
-                major_selections_to_delete = MajorSelection.objects.filter(**filter_criteria).order_by('rank')
+                major_selections_to_delete = MajorSelection.objects.filter(
+                    **filter_criteria
+                ).order_by("rank")
 
                 if not major_selections_to_delete.exists():
                     break
 
                 major_selection = major_selections_to_delete.first()
-                next_node = MajorSelectionNode.objects.filter(major_selection=major_selection).first()
+                next_node = MajorSelectionNode.objects.filter(
+                    major_selection=major_selection
+                ).first()
 
                 if next_node and major_selection.head:
                     next_major_selection = next_node.next_major_selection
@@ -870,7 +985,9 @@ class MajorSelectionViewSet(
                         next_major_selection.head = True
                         next_major_selection.save()
                 elif next_node:
-                    prev_node = MajorSelectionNode.objects.filter(next_major_selection=major_selection).first()
+                    prev_node = MajorSelectionNode.objects.filter(
+                        next_major_selection=major_selection
+                    ).first()
                     if prev_node:
                         prev_node.next_major_selection = next_node.next_major_selection
                         prev_node.save()
@@ -879,14 +996,14 @@ class MajorSelectionViewSet(
                 else:
                     names.append(major_selection.student.name)
                     major_selection.delete()
-                
+
         print("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n")
         print("*****************************************")
         print(set(names))
         print("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n")
         print("*****************************************")
-        return Response('ok', status=204)
-        
+        return Response("ok", status=204)
+
     @action(detail=False, methods=["POST"])
     def change_ranks_for_all_students(self, request, *args, **kwargs):
         try:
@@ -895,11 +1012,15 @@ class MajorSelectionViewSet(
 
             for student in students:
                 with transaction.atomic():
-                    head_selection = MajorSelection.objects.filter(head=True, student_id=student.id).first()
+                    head_selection = MajorSelection.objects.filter(
+                        head=True, student_id=student.id
+                    ).first()
                     if not head_selection:
                         continue  # If no head is found, skip to the next student
 
-                    current_node = MajorSelectionNode.objects.filter(major_selection=head_selection).first()
+                    current_node = MajorSelectionNode.objects.filter(
+                        major_selection=head_selection
+                    ).first()
                     rank = 1
 
                     # Update ranks for the current student
@@ -909,79 +1030,107 @@ class MajorSelectionViewSet(
                         current_major_selection.save()
 
                         next_node = current_node.next_major_selection
-                        current_node = MajorSelectionNode.objects.filter(major_selection=next_node).first()
+                        current_node = MajorSelectionNode.objects.filter(
+                            major_selection=next_node
+                        ).first()
                         rank += 1
 
-            return Response({"detail": "Ranks updated successfully for all students."}, status=status.HTTP_200_OK)
+            return Response(
+                {"detail": "Ranks updated successfully for all students."},
+                status=status.HTTP_200_OK,
+            )
 
         except Exception as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        
+
     @action(detail=False, methods=["POST"])
     def change_ranks(self, request, *args, **kwargs):
-        student = request.GET.get('student_id')
+        student = request.GET.get("student_id")
         try:
             with transaction.atomic():
-                head_selection = MajorSelection.objects.filter(head=True, student_id=student).first()
+                head_selection = MajorSelection.objects.filter(
+                    head=True, student_id=student
+                ).first()
                 if not head_selection:
-                    return Response({"detail": "No head found."}, status=status.HTTP_404_NOT_FOUND)
-                
-                current_node = MajorSelectionNode.objects.filter(major_selection=head_selection).first()
+                    return Response(
+                        {"detail": "No head found."}, status=status.HTTP_404_NOT_FOUND
+                    )
+
+                current_node = MajorSelectionNode.objects.filter(
+                    major_selection=head_selection
+                ).first()
                 rank = 1
-                
+
                 while current_node:
                     current_major_selection = current_node.major_selection
                     current_major_selection.rank = rank
                     current_major_selection.save()
-                    
+
                     next_node = current_node.next_major_selection
-                    current_node = MajorSelectionNode.objects.filter(major_selection=next_node).first()
+                    current_node = MajorSelectionNode.objects.filter(
+                        major_selection=next_node
+                    ).first()
                     rank += 1
-                
-                return Response({"detail": "Ranks updated successfully."}, status=status.HTTP_200_OK)
+
+                return Response(
+                    {"detail": "Ranks updated successfully."}, status=status.HTTP_200_OK
+                )
         except Exception as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=["DELETE"])
     def bulk_delete(self, request, *args, **kwargs):
-        student_id = request.GET.get('student_id')
-        university_ids = request.data.get('university_ids', [])
-        genders = request.data.get('genders', [])
-        province_ids = request.data.get('province_ids', [])
-        major_ids = request.data.get('major_ids', [])
-        admissions = request.data.get('admissions', [])
-        courses = request.data.get('courses', [])
+        student_id = request.GET.get("student_id")
+        university_ids = request.data.get("university_ids", [])
+        genders = request.data.get("genders", [])
+        province_ids = request.data.get("province_ids", [])
+        major_ids = request.data.get("major_ids", [])
+        admissions = request.data.get("admissions", [])
+        courses = request.data.get("courses", [])
 
         if not student_id:
-            return Response({'error': 'Missing student_id'}, status=400)
-        
-        if not (university_ids or genders or province_ids or major_ids or admissions or courses):
-            return Response({'error': 'At least one filter criteria must be provided'}, status=400)
+            return Response({"error": "Missing student_id"}, status=400)
 
-        filter_criteria = {'student_id': student_id}
-        
+        if not (
+            university_ids
+            or genders
+            or province_ids
+            or major_ids
+            or admissions
+            or courses
+        ):
+            return Response(
+                {"error": "At least one filter criteria must be provided"}, status=400
+            )
+
+        filter_criteria = {"student_id": student_id}
+
         if university_ids:
-            filter_criteria['booklet_row__university_id__in'] = university_ids
+            filter_criteria["booklet_row__university_id__in"] = university_ids
         if genders:
-            filter_criteria['booklet_row__gender__in'] = genders
+            filter_criteria["booklet_row__gender__in"] = genders
         if province_ids:
-            filter_criteria['booklet_row__university__province_id__in'] = province_ids
+            filter_criteria["booklet_row__university__province_id__in"] = province_ids
         if major_ids:
-            filter_criteria['booklet_row__major_id__in'] = major_ids
+            filter_criteria["booklet_row__major_id__in"] = major_ids
         if admissions:
-            filter_criteria['booklet_row__admission__in'] = admissions
+            filter_criteria["booklet_row__admission__in"] = admissions
         if courses:
-            filter_criteria['booklet_row__course__in'] = courses
-        
+            filter_criteria["booklet_row__course__in"] = courses
+
         with transaction.atomic():
             while True:
-                major_selections_to_delete = MajorSelection.objects.filter(**filter_criteria).order_by('rank')
+                major_selections_to_delete = MajorSelection.objects.filter(
+                    **filter_criteria
+                ).order_by("rank")
 
                 if not major_selections_to_delete.exists():
                     break
 
                 major_selection = major_selections_to_delete.first()
-                next_node = MajorSelectionNode.objects.filter(major_selection=major_selection).first()
+                next_node = MajorSelectionNode.objects.filter(
+                    major_selection=major_selection
+                ).first()
 
                 if next_node and major_selection.head:
                     next_major_selection = next_node.next_major_selection
@@ -990,7 +1139,9 @@ class MajorSelectionViewSet(
                         next_major_selection.head = True
                         next_major_selection.save()
                 elif next_node:
-                    prev_node = MajorSelectionNode.objects.filter(next_major_selection=major_selection).first()
+                    prev_node = MajorSelectionNode.objects.filter(
+                        next_major_selection=major_selection
+                    ).first()
                     if prev_node:
                         prev_node.next_major_selection = next_node.next_major_selection
                         prev_node.save()
@@ -1001,9 +1152,11 @@ class MajorSelectionViewSet(
             # After deletion, update the ranks of the remaining MajorSelection objects
             remaining_major_selections = MajorSelection.objects.filter(
                 student_id=student_id
-            ).order_by('rank')
+            ).order_by("rank")
 
-            for index, remaining_major_selection in enumerate(remaining_major_selections, start=1):
+            for index, remaining_major_selection in enumerate(
+                remaining_major_selections, start=1
+            ):
                 remaining_major_selection.rank = index
                 remaining_major_selection.save()
 
@@ -1014,51 +1167,71 @@ class MajorSelectionViewSet(
             #         head_selection.head = True
             #         head_selection.save()
 
-        return Response('ok', status=204)
-    
+        return Response("ok", status=204)
+
     @action(detail=False, methods=["POST"])
     def update_behyari(self, request):
         # Get the file from the request
-        file = request.FILES.get('file')
+        file = request.FILES.get("file")
 
         if not file:
-            return Response({"error": f"Failed to read Excel file: {e}"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": f"Failed to read Excel file: {e}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Read the file into a Pandas DataFrame
         try:
             df = pd.read_excel(file)
         except Exception as e:
-            return Response({"error": f"Failed to read Excel file: {e}"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": f"Failed to read Excel file: {e}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Check if the DataFrame contains the expected data (i.e., a column with major codes)
-        if df.empty or df.columns[0] != 'major_code':
-            return Response({"error": 'Invalid file format. The first column should be "major_code".'}, status=status.HTTP_400_BAD_REQUEST)
+        if df.empty or df.columns[0] != "major_code":
+            return Response(
+                {
+                    "error": 'Invalid file format. The first column should be "major_code".'
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         # Get the major codes from the file
-        major_codes = df['major_code'].tolist()
+        major_codes = df["major_code"].tolist()
 
         # Update the corresponding BookletRow entries
-        updated_count = BookletRow.objects.filter(major_code__in=major_codes).update(course=12)
+        updated_count = BookletRow.objects.filter(major_code__in=major_codes).update(
+            course=12
+        )
 
         # Return a success response with the number of rows updated
-        return Response({'message': f'{updated_count} rows updated successfully.'})
-    
+        return Response({"message": f"{updated_count} rows updated successfully."})
+
     @action(detail=False, methods=["GET"])
     def approve_or_disapprove(self, request, *args, **kwargs):
         student_id = request.GET.get("student_id")
         if not student_id:
-            return Response({"error": "Student ID is required."}, status=status.HTTP_400_BAD_REQUEST)
-        
+            return Response(
+                {"error": "Student ID is required."}, status=status.HTTP_400_BAD_REQUEST
+            )
+
         try:
             student = Student.objects.get(id=student_id)
         except Student.DoesNotExist:
-            return Response({"error": "Student not found."}, status=status.HTTP_404_NOT_FOUND)
-        
+            return Response(
+                {"error": "Student not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+
         student.is_state_final_approval = not student.is_state_final_approval
         student.save()
 
-        return Response({"message": "is_state_final_approval updated successfully."}, status=status.HTTP_200_OK)
-    
+        return Response(
+            {"message": "is_state_final_approval updated successfully."},
+            status=status.HTTP_200_OK,
+        )
+
     @action(detail=False, methods=["GET"])
     def reset_major_selection(self, request):
         # student_id = request.GET.get('student_id')
@@ -1082,7 +1255,7 @@ class MajorSelectionViewSet(
         student.is_state_choose_booklet_rows = False
         student.is_state_choose_booklet_rows_done = False
         student.save()
-        student_gender = Student.objects.get(id=student_id).gender 
+        student_gender = Student.objects.get(id=student_id).gender
         genders = [1, 2] if student_gender else [0, 2]
         select_province_for_majors = SelectProvinceForMajor.objects.filter(
             student_id=student_id
@@ -1093,22 +1266,24 @@ class MajorSelectionViewSet(
             select_province = select_province_for_major.select_province
             # Get the field_of_study for the major
             field_of_study = Major.objects.get(id=major_id).field_of_study
-            
+
             # Determine the ordering field based on the field_of_study
             if field_of_study == 0:
-                order_field = 'university__rank_riazi'
+                order_field = "university__rank_riazi"
             elif field_of_study == 1:
-                order_field = 'university__rank_tajrobi'
+                order_field = "university__rank_tajrobi"
             elif field_of_study == 2:
-                order_field = 'university__rank_ensani'
+                order_field = "university__rank_ensani"
             else:
                 # Default ordering if field_of_study does not match any condition
-                order_field = 'university__rank'
+                order_field = "university__rank"
 
             for province in select_province.order_by("index"):
                 province_id = province.province.id
                 booklet_row = BookletRow.objects.filter(
-                    major_id=major_id, university__province_id=province_id, gender__in=genders
+                    major_id=major_id,
+                    university__province_id=province_id,
+                    gender__in=genders,
                 ).order_by(order_field)
                 booklet_rows += booklet_row
         sorted_list = sorted(booklet_rows, key=lambda x: (x.course))
@@ -1263,7 +1438,6 @@ class MajorSelectionViewSet(
                 self.drawImage(
                     "/home/mrezash/majorselection1402/booklet_information/images/check-boy.png",
                     # "C:/Users/Asus/Desktop/MajorFinal/majorselection1402/booklet_information/images/check-boy.png",
-
                     self.width - inch * 9,
                     self.height - 77,
                     width=200,
@@ -1437,7 +1611,7 @@ class MajorSelectionViewSet(
                         data[i][j] = "پسر"
                     elif data[i][j] == 2:
                         data[i][j] = "هردو"
-                
+
                 elif j == 3:
                     if data[i][j] == 0:
                         data[i][j] = "اول"
@@ -1458,16 +1632,18 @@ class MajorSelectionViewSet(
 
                 data[i][j] = p
 
-
         student_name = Student.objects.get(id=request.GET.get("student_id")).name
 
         student_gender = Student.objects.get(id=request.GET.get("student_id")).gender
-        
-        institue_text = Student.objects.get(id=request.GET.get("student_id")).school.title
+
+        institue_text = Student.objects.get(
+            id=request.GET.get("student_id")
+        ).school.title
 
         student = Student.objects.get(id=request.GET.get("student_id"))
-        institute_logo = student.school.logo.path if student.school and student.school.logo else None
-
+        institute_logo = (
+            student.school.logo.path if student.school and student.school.logo else None
+        )
 
         student_name = (
             "نام دانش آموز: "
@@ -1546,8 +1722,9 @@ class MajorSelectionViewSet(
                     ),
                 ]
                 + elements,
-                canvasmaker=lambda *args, **kwargs: FooterCanvasBoy(institute_logo, *args, **kwargs),
-
+                canvasmaker=lambda *args, **kwargs: FooterCanvasBoy(
+                    institute_logo, *args, **kwargs
+                ),
             )
         else:
             doc.multiBuild(
@@ -1564,11 +1741,12 @@ class MajorSelectionViewSet(
                     ),
                 ]
                 + elements,
-                canvasmaker=lambda *args, **kwargs: FooterCanvasGirl(institute_logo, *args, **kwargs),
+                canvasmaker=lambda *args, **kwargs: FooterCanvasGirl(
+                    institute_logo, *args, **kwargs
+                ),
             )
 
         # doc.build(
 
         # )
         return response
-       

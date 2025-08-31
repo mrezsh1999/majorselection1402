@@ -26,20 +26,22 @@ SECRET_KEY = "django-insecure-5udwteao$#g%@yc4-r^nrzn8(07ifg=$f7_57ndzmi87-v%viw
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = [
-    '194.60.231.122',  # Your server's IP address
-    'localhost',
-    'tavanapplication.ir',  # Your domain
-    'www.tavanapplication.ir',  # Include www if you support it
-]
+ALLOWED_HOSTS = ['*']
 
-CSRF_TRUSTED_ORIGINS = [
-    'http://194.60.231.122',  # IP address with HTTP
-    'https://194.60.231.122', # IP address with HTTPS (if supported)
-    'localhost',
-    'https://tavanapplication.ir',  # Main domain with HTTPS
-    'https://www.tavanapplication.ir',  # Include www version
-]
+# ALLOWED_HOSTS = [
+#     '194.60.231.122',  # Your server's IP address
+#     'localhost',
+#     'tavanapplication.ir',  # Your domain
+#     'www.tavanapplication.ir',  # Include www if you support it
+# ]
+
+# CSRF_TRUSTED_ORIGINS = [
+#     'http://194.60.231.122',  # IP address with HTTP
+#     'https://194.60.231.122', # IP address with HTTPS (if supported)
+#     'localhost',
+#     'https://tavanapplication.ir',  # Main domain with HTTPS
+#     'https://www.tavanapplication.ir',  # Include www version
+# ]
 
 
 
@@ -95,23 +97,23 @@ WSGI_APPLICATION = "majorselection1402.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/4.1/ref/settings/#databases
 
-# DATABASES = {
-#     "default": {
-#         "ENGINE": "django.db.backends.sqlite3",
-#         "NAME": BASE_DIR / "db.sqlite3",
-#     }
-# }
-
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql_psycopg2',
-        'NAME': 'majorselection1402',
-        'USER': 'mrezash',
-        'PASSWORD': 'mrezash1999',
-        'HOST': 'localhost',   # Or an IP Address that your DB is hosted on
-        'PORT': '',
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "db.sqlite3",
     }
 }
+
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql_psycopg2',
+#         'NAME': 'majorselection1402',
+#         'USER': 'mrezash',
+#         'PASSWORD': 'mrezash1999',
+#         'HOST': 'localhost',   # Or an IP Address that your DB is hosted on
+#         'PORT': '',
+#     }
+# }
 
 
 # Password validation

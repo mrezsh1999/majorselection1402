@@ -107,6 +107,8 @@ class BookletRow(models.Model):
 
     boursie_description = models.CharField(max_length=512, blank=True, null=True)
 
+    description = models.TextField(blank=True, null=True)
+
     def __str__(self):
         return "{} {}".format(self.major.title, self.university.title)
 
@@ -151,28 +153,31 @@ class SelectDefaultMajor(models.Model):
 
 
 class MajorSelection(models.Model):
-    student = models.ForeignKey('users.Student', on_delete=models.PROTECT)
+    student = models.ForeignKey("users.Student", on_delete=models.PROTECT)
     booklet_row = models.ForeignKey(BookletRow, on_delete=models.PROTECT)
     head = models.BooleanField(default=False)
     # next_node = models.ForeignKey(MajorSelectionNode, on_delete=models.SET_NULL, blank=True, null=True)
     rank = models.PositiveSmallIntegerField(null=True, blank=True)
 
     def __str__(self):
-        return '{} {} {}'.format(self.student.name, self.booklet_row.major.title, self.booklet_row.university.title)
+        return "{} {} {}".format(
+            self.student.name,
+            self.booklet_row.major.title,
+            self.booklet_row.university.title,
+        )
 
     class Meta:
         # unique_together = ('booklet_row', 'student')
-        verbose_name = _('major selection')
-        verbose_name_plural = _('majors selection')
+        verbose_name = _("major selection")
+        verbose_name_plural = _("majors selection")
 
     def delete(self, *args, **kwargs):
         # Start a transaction to ensure atomicity
         with transaction.atomic():
             # Decrement the ranks of the subsequent MajorSelection objects
             MajorSelection.objects.filter(
-                student=self.student,
-                rank__gt=self.rank
-            ).update(rank=models.F('rank') - 1)
+                student=self.student, rank__gt=self.rank
+            ).update(rank=models.F("rank") - 1)
 
             # Call the superclass delete method to delete the object
             super(MajorSelection, self).delete(*args, **kwargs)
@@ -195,13 +200,21 @@ class MajorSelection(models.Model):
 
 
 class MajorSelectionNode(models.Model):
-    major_selection = models.ForeignKey(MajorSelection, on_delete=models.CASCADE, related_name='major_selection')
-    next_major_selection = models.ForeignKey(MajorSelection, on_delete=models.CASCADE, null=True, blank=True, related_name='next_major_selection')
+    major_selection = models.ForeignKey(
+        MajorSelection, on_delete=models.CASCADE, related_name="major_selection"
+    )
+    next_major_selection = models.ForeignKey(
+        MajorSelection,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="next_major_selection",
+    )
 
     def __str__(self):
         return self.major_selection.student.name
 
     class Meta:
         # unique_together = ('booklet_row', 'student')
-        verbose_name = _('major selection node')
-        verbose_name_plural = _('majors selection node')
+        verbose_name = _("major selection node")
+        verbose_name_plural = _("majors selection node")
